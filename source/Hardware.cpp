@@ -162,23 +162,45 @@ spi_active(spi_t* obj) {
   fprintf(stderr, "Unhandled: spi_active\n");
   return 0;
 }
+
+namespace {
+volatile uint32_t _gpio_state = 0;
+volatile uint32_t _gpio_output = 0;
+
+bool gpio_is_output(uint32_t pin_number) {
+  return (_gpio_output >> pin_number) & 1;
+}
+}
+
 void
 nrf_gpio_range_cfg_output(uint32_t pin_range_start, uint32_t pin_range_end) {
-  fprintf(stderr, "Unhandled: nrf_gpio_range_cfg_output\n");
+  for (int i = 0; i < pin_range_start; ++i) {
+    _gpio_output |= 1 << i;
+  }
 }
 void
 nrf_gpio_pin_set(uint32_t pin_number) {
-  fprintf(stderr, "Unhandled: nrf_gpio_pin_set\n");
+  nrf_gpio_pins_set(1 << pin_number);
 }
 void
 nrf_gpio_pins_set(uint32_t pin_mask) {
-  fprintf(stderr, "Unhandled: nrf_gpio_pins_set\n");
+  if ((_gpio_output & pin_mask) != pin_mask) {
+    //fprintf(stderr, "Setting non-output pin.\n");
+    //return;
+  }
+  _gpio_state |= pin_mask;
+  //fprintf(stderr, "GPIO: %08x\n", _gpio_state);
 }
 void
 nrf_gpio_pin_clear(uint32_t pin_number) {
-  fprintf(stderr, "Unhandled: nrf_gpio_pin_clear\n");
+  nrf_gpio_pins_clear(1 << pin_number);
 }
 void
 nrf_gpio_pins_clear(uint32_t pin_mask) {
-  fprintf(stderr, "Unhandled: nrf_gpio_pins_clear\n");
+  if ((_gpio_output & pin_mask) != pin_mask) {
+    //fprintf(stderr, "Clearing non-output pin.\n");
+    //return;
+  }
+  _gpio_state &= ~pin_mask;
+  //fprintf(stderr, "GPIO: %08x\n", _gpio_state);
 }

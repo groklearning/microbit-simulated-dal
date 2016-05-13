@@ -10,6 +10,7 @@ extern "C" void app_main();
 #include <errno.h>
 
 #include "Hardware.h"
+#include "ticker_dal.h"
 
 namespace {
 pthread_cond_t interrupt_signal;
@@ -76,8 +77,12 @@ serial_thread_start(void*) {
 void*
 timer_thread_start(void*) {
   while (true) {
-    usleep(100);
-    signal_interrupt();
+    for (int i = 0; i < 375; ++i) {
+      usleep(16);
+      ticker_on_tick();
+      signal_interrupt();
+    }
+    ticker_on_macrotick();
   }
 }
 

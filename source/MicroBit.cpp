@@ -341,13 +341,11 @@ MicroBitCompass::idleTick() {
 }
 int
 MicroBitCompass::isCalibrated() {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
-  return 0;
+  return true;
 }
 int
 MicroBitCompass::isCalibrating() {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
-  return 0;
+  return false;
 }
 void
 MicroBitCompass::clearCalibration() {
