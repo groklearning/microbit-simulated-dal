@@ -1,0 +1,20 @@
+{
+  "name": "microbit-simulated-dal",
+  "version": "0.0.0",
+  "description": "Simulated implementation of the micro:bit DAL (lancaster-university/microbit-dal)",
+  "keywords": [
+    "microbit"
+  ],
+  "author": "Jim Mussared <jim@groklearning.com>",
+  "homepage": "http://groklearning.com/",
+  "license": "Apache-2.0",
+  "dependencies": {
+  },
+  "extraIncludes": [
+    "inc",
+    "inc/gpio",
+    "inc/mbed_api",
+    "inc/ble",
+    "inc/nrf"
+  ]
+}
