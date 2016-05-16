@@ -41,90 +41,6 @@
 #include <unistd.h>
 #include <time.h>
 
-// MicroBit.h
-
-// MicroBitFont.h
-const unsigned char* MicroBitFont::defaultFont;
-
-// DynamicPwm.h
-void
-DynamicPwm::redirect(PinName pin) {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
-}
-DynamicPwm*
-DynamicPwm::allocate(PinName pin, PwmPersistence persistence) {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
-}
-void
-DynamicPwm::release() {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
-}
-int
-DynamicPwm::write(float value) {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
-  return 0;
-}
-PinName
-DynamicPwm::getPinName() {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
-}
-int
-DynamicPwm::getValue() {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
-  return 0;
-}
-int
-DynamicPwm::getPeriodUs() {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
-  return 0;
-}
-int
-DynamicPwm::getPeriod() {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
-  return 0;
-}
-int
-DynamicPwm::setPeriodUs(int period) {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
-  return 0;
-}
-int
-DynamicPwm::setPeriod(int period) {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
-  return 0;
-}
-
-// ErrorNo.h
-// ExternalEvents.h
-// ManagedString.h
-StringData*
-ManagedString::leakData() {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
-}
-ManagedString
-ManagedString::substring(int16_t start, int16_t length) {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
-}
-char
-ManagedString::charAt(int16_t index) {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
-  return 0;
-}
-void
-ManagedString::initEmpty() {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
-}
-void
-ManagedString::initString(const char* str) {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
-}
-
-// MemberFunctionCallback.h
-void
-MemberFunctionCallback::fire(MicroBitEvent e) {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
-}
-
 // MicroBitAccelerometer.h
 MicroBitAccelerometer::~MicroBitAccelerometer() {
   fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
@@ -234,24 +150,6 @@ MicroBitAccelerometer::instantaneousAccelerationSquared() {
 }
 BasicGesture
 MicroBitAccelerometer::instantaneousPosture() {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
-}
-
-// MicroBitButton.h
-MicroBitButton::~MicroBitButton() {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
-}
-int
-MicroBitButton::isPressed() {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
-  return 0;
-}
-void
-MicroBitButton::setEventConfiguration(MicroBitButtonEventConfiguration config) {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
-}
-void
-MicroBitButton::systemTick() {
   fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
 }
 
@@ -555,16 +453,6 @@ MicroBitDisplay::readLightLevel() {
   return 0;
 }
 
-// MicroBitEvent.h
-void
-MicroBitEvent::fire() {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
-}
-void
-MicroBitEvent::fire(MicroBitEventLaunchMode mode) {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
-}
-
 // MicroBit.h
 MicroBit::MicroBit()
     : flags(0x00),
@@ -582,12 +470,13 @@ MicroBit::MicroBit()
          MICROBIT_ID_IO_P6, MICROBIT_ID_IO_P7, MICROBIT_ID_IO_P8, MICROBIT_ID_IO_P9, MICROBIT_ID_IO_P10, MICROBIT_ID_IO_P11,
          MICROBIT_ID_IO_P12, MICROBIT_ID_IO_P13, MICROBIT_ID_IO_P14, MICROBIT_ID_IO_P15, MICROBIT_ID_IO_P16, MICROBIT_ID_IO_P19,
          MICROBIT_ID_IO_P20) {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
 }
+
 void
 MicroBit::init() {
   fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
 }
+
 ManagedString
 MicroBit::getName() {
   fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
@@ -596,6 +485,7 @@ ManagedString
 MicroBit::getSerial() {
   fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
 }
+
 void
 MicroBit::reset() {
   fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
@@ -628,24 +518,64 @@ MicroBit::systemTasks() {
 }
 int
 MicroBit::addSystemComponent(MicroBitComponent* component) {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
-  return 0;
+  int i = 0;
+
+  while (systemTickComponents[i] != NULL && i < MICROBIT_SYSTEM_COMPONENTS)
+    i++;
+
+  if (i == MICROBIT_SYSTEM_COMPONENTS)
+    return MICROBIT_NO_RESOURCES;
+
+  systemTickComponents[i] = component;
+
+  return MICROBIT_OK;
 }
+
 int
 MicroBit::removeSystemComponent(MicroBitComponent* component) {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
-  return 0;
+  int i = 0;
+
+  while (systemTickComponents[i] != component && i < MICROBIT_SYSTEM_COMPONENTS)
+    i++;
+
+  if (i == MICROBIT_SYSTEM_COMPONENTS)
+    return MICROBIT_INVALID_PARAMETER;
+
+  systemTickComponents[i] = NULL;
+
+  return MICROBIT_OK;
 }
+
 int
 MicroBit::addIdleComponent(MicroBitComponent* component) {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
-  return 0;
+  int i = 0;
+
+  while (idleThreadComponents[i] != NULL && i < MICROBIT_IDLE_COMPONENTS)
+    i++;
+
+  if (i == MICROBIT_IDLE_COMPONENTS)
+    return MICROBIT_NO_RESOURCES;
+
+  idleThreadComponents[i] = component;
+
+  return MICROBIT_OK;
 }
+
 int
 MicroBit::removeIdleComponent(MicroBitComponent* component) {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
-  return 0;
+  int i = 0;
+
+  while (idleThreadComponents[i] != component && i < MICROBIT_IDLE_COMPONENTS)
+    i++;
+
+  if (i == MICROBIT_IDLE_COMPONENTS)
+    return MICROBIT_INVALID_PARAMETER;
+
+  idleThreadComponents[i] = NULL;
+
+  return MICROBIT_OK;
 }
+
 int
 MicroBit::setTickPeriod(int speedMs) {
   fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
@@ -656,6 +586,7 @@ MicroBit::getTickPeriod() {
   fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
   return 0;
 }
+
 unsigned long
 MicroBit::systemTime() {
   struct timespec ts;
@@ -664,16 +595,32 @@ MicroBit::systemTime() {
   ms += ts.tv_nsec / 1000000ULL;
   return ms;
 }
+
 const char*
 MicroBit::systemVersion() {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
-  return 0;
+  return MICROBIT_DAL_VERSION;
 }
+
 void
 MicroBit::panic(int statusCode) {
   fprintf(stderr, "Panic: %d\n", statusCode);
   exit(1);
 }
+
+void MicroBit::onABListenerRegisteredEvent(MicroBitEvent) {
+  // A user has registered to receive events from the buttonAB multibutton.
+  // Disable click events from being generated by ButtonA and ButtonB, and defer the
+  // control of this to the multibutton handler.
+  //
+  // This way, buttons look independent unless a buttonAB is requested, at which
+  // point button A+B clicks can be correclty handled without breaking
+  // causal ordering.
+
+  buttonA.setEventConfiguration(MICROBIT_BUTTON_SIMPLE_EVENTS);
+  buttonB.setEventConfiguration(MICROBIT_BUTTON_SIMPLE_EVENTS);
+  buttonAB.setEventConfiguration(MICROBIT_BUTTON_ALL_EVENTS);
+}
+
 MicroBit uBit;
 
 // MicroBitI2C.h
@@ -787,52 +734,6 @@ int
 MicroBitLightSensor::read() {
   fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
   return 0;
-}
-
-// MicroBitListener.h
-void
-MicroBitListener::queue(MicroBitEvent e) {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
-}
-
-// MicroBitMessageBus.h
-MicroBitMessageBus::~MicroBitMessageBus() {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
-}
-MicroBitListener*
-MicroBitMessageBus::elementAt(int n) {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
-}
-int
-MicroBitMessageBus::add(MicroBitListener* newListener) {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
-  return 0;
-}
-int
-MicroBitMessageBus::remove(MicroBitListener* newListener) {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
-  return 0;
-}
-int
-MicroBitMessageBus::deleteMarkedListeners() {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
-  return 0;
-}
-void
-MicroBitMessageBus::queueEvent(MicroBitEvent& evt) {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
-}
-void
-MicroBitMessageBus::idleTick() {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
-}
-int
-MicroBitMessageBus::isIdleCallbackNeeded() {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
-}
-int
-MicroBitMessageBus::listen(int, int, void (*)(MicroBitEvent), unsigned short) {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
 }
 
 // MicroBitMultiButton.h
@@ -1024,249 +925,13 @@ MicroBitThermometer::updateTemperature() {
   fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
 }
 
-// PacketBuffer.h
-uint8_t*
-PacketBuffer::getBytes() {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
-}
-void
-PacketBuffer::init(uint8_t* data, int length, int rssi) {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
-}
-int
-PacketBuffer::setByte(int position, uint8_t value) {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
-  return 0;
-}
-int
-PacketBuffer::getByte(int position) {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
-  return 0;
-}
-int
-PacketBuffer::length() {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
-  return 0;
-}
-int
-PacketBuffer::getRSSI() {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
-  return 0;
-}
-void
-PacketBuffer::setRSSI(uint8_t rssi) {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
-}
-
-// RefCounted.h
-void
-RefCounted::incr() {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
-}
-void
-RefCounted::decr() {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
-}
-void
-RefCounted::init() {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
-}
-bool
-RefCounted::isReadOnly() {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
-  return false;
-}
-
-// MicroBitFiber.h
-unsigned long ticks = 0;
-Fiber mainFiber;
-Fiber* currentFiber = &mainFiber;
-
-// Misc
-namespace mbed {
-namespace {
-void (*serial_callback)() = NULL;
-
-void
-handle_serial_irq(unsigned int, SerialIrq) {
-  if (serial_callback) {
-    serial_callback();
-  }
-}
-}
-
-Serial::Serial(PinName tx, PinName rx, const char* name) {
-  serial_init(NULL, tx, rx);
-  serial_irq_handler(NULL, &handle_serial_irq, 0);
-}
-
-void
-Serial::attach(void (*fn)()) {
-  if (fn) {
-    serial_callback = fn;
-    serial_irq_set(NULL, RxIrq, 1);
-    fprintf(stderr, "Serial::attach(RX)\n");
-  } else {
-    serial_irq_set(NULL, RxIrq, 0);
-    serial_callback = NULL;
-    fprintf(stderr, "Serial::attach(~RX)\n");
-  }
-}
-
-int(Serial::getc)() {
-  return serial_getc(NULL);
-}
-
-int(Serial::putc)(int c) {
-  serial_putc(NULL, c);
-  return 1;
-}
-
-int
-Serial::readable() {
-  return serial_readable(NULL);
-}
-
-void
-Ticker::attach_us(void (*fptr)(void), timestamp_t t) {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
-}
-void
-Ticker::detach() {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
-}
-
-DigitalIn::DigitalIn(PinName pin) {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
-}
-DigitalIn::DigitalIn(PinName pin, PinMode mode) {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
-}
-int
-DigitalIn::read() {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
-  return 0;
-}
-void
-DigitalIn::mode(PinMode pull) {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
-}
-int
-DigitalIn::is_connected() {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
-  return true;
-}
-
-AnalogIn::AnalogIn(PinName pin) {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
-}
-float
-AnalogIn::read() {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
-  return 0;
-}
-unsigned short
-AnalogIn::read_u16() {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
-  return 0;
-}
-
-I2C::I2C(PinName sda, PinName scl) {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
-}
-void
-I2C::frequency(int hz) {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
-}
-int
-I2C::read(int address, char* data, int length, bool repeated) {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
-}
-int
-I2C::read(int ack) {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
-}
-int
-I2C::write(int address, const char* data, int length, bool repeated) {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
-}
-int
-I2C::write(int data) {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
-}
-void
-I2C::start(void) {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
-}
-void
-I2C::stop(void) {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
-}
-
-PwmOut::PwmOut(PinName pin) {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
-}
-void
-PwmOut::write(float value) {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
-}
-float
-PwmOut::read() {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
-  return 0;
-}
-void
-PwmOut::period(float seconds) {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
-}
-void
-PwmOut::period_ms(int ms) {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
-}
-void
-PwmOut::period_us(int us) {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
-}
-void
-PwmOut::pulsewidth(float seconds) {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
-}
-void
-PwmOut::pulsewidth_ms(int ms) {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
-}
-void
-PwmOut::pulsewidth_us(int us) {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
-}
-}
-
 MicroBitAccelerometer::MicroBitAccelerometer(uint16_t id, uint16_t address) : sample(), int1(MICROBIT_PIN_ACCEL_DATA_READY) {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
-}
-MicroBitButton::MicroBitButton(uint16_t id, PinName name, MicroBitButtonEventConfiguration eventConfiguration, PinMode mode)
-    : pin(name, mode) {
   fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
 }
 MicroBitCompass::MicroBitCompass(uint16_t id, uint16_t address) : average(), sample(), int1(MICROBIT_PIN_COMPASS_DATA_READY) {
   fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
 }
 MicroBitDisplay::MicroBitDisplay(uint16_t id, uint8_t x, uint8_t y) : font(), image(x * 2, y) {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
-}
-MicroBitEvent::MicroBitEvent(uint16_t source, uint16_t value, MicroBitEventLaunchMode mode) {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
-}
-MicroBitEvent::MicroBitEvent() {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
-}
-MicroBitEventQueueItem::MicroBitEventQueueItem(MicroBitEvent evt) {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
-}
-MicroBitFont::MicroBitFont(const unsigned char* font, int asciiEnd) {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
-}
-MicroBitFont::MicroBitFont() {
   fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
 }
 MicroBitI2C::MicroBitI2C(PinName sda, PinName scl) : I2C(sda, scl) {
@@ -1320,12 +985,6 @@ MicroBitIO::MicroBitIO(int ID_P0, int ID_P1, int ID_P2, int ID_P3, int ID_P4, in
 MicroBitLightSensor::MicroBitLightSensor() : analogTrigger() {
   fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
 }
-MicroBitListener::MicroBitListener(uint16_t id, uint16_t value, void (*handler)(MicroBitEvent, void*), void* arg, uint16_t flags) {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
-}
-MicroBitMessageBus::MicroBitMessageBus() {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
-}
 MicroBitMultiButton::MicroBitMultiButton(uint16_t id, uint16_t button1, uint16_t button2) {
   fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
 }
@@ -1349,7 +1008,26 @@ ManagedString::~ManagedString() {
   fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
 }
 
+namespace {
+uint8_t heap[60];
+uint8_t* heap_ptr = heap;
+}
+
+int microbit_heap_init() {
+}
+
+void *microbit_malloc(size_t size) {
+  return native_malloc(size);
+  //if (heap_ptr + size > heap + sizeof(heap)) {
+  //  return NULL;
+  //}
+  //void* ret = heap;
+  //heap_ptr += size;
+  //return ret;
+}
+
 void
-microbit_free(void*) {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
+microbit_free(void* p) {
+  //fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
+  return native_free(p);
 }

@@ -8,6 +8,9 @@
 
 void __wait_for_interrupt();
 
+void __enable_irq();
+void __disable_irq();
+
 #ifdef __cplusplus
 extern "C" {
 #endif

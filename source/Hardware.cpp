@@ -13,6 +13,8 @@
 #include "serial_api.h"
 #include "spi_api.h"
 
+#include "Hardware.h"
+
 namespace {
 uint8_t serial_buffer[1024];
 volatile uint serial_buffer_head = 0;
@@ -163,8 +165,169 @@ spi_active(spi_t* obj) {
   return 0;
 }
 
+// Misc
+namespace mbed {
 namespace {
-volatile uint32_t _gpio_state = 0;
+void (*serial_callback)() = NULL;
+
+void
+handle_serial_irq(unsigned int, SerialIrq) {
+  if (serial_callback) {
+    serial_callback();
+  }
+}
+}
+
+Serial::Serial(PinName tx, PinName rx, const char* name) {
+  serial_init(NULL, tx, rx);
+  serial_irq_handler(NULL, &handle_serial_irq, 0);
+}
+
+void
+Serial::attach(void (*fn)()) {
+  if (fn) {
+    serial_callback = fn;
+    serial_irq_set(NULL, RxIrq, 1);
+    fprintf(stderr, "Serial::attach(RX)\n");
+  } else {
+    serial_irq_set(NULL, RxIrq, 0);
+    serial_callback = NULL;
+    fprintf(stderr, "Serial::attach(~RX)\n");
+  }
+}
+
+int(Serial::getc)() {
+  return serial_getc(NULL);
+}
+
+int(Serial::putc)(int c) {
+  serial_putc(NULL, c);
+  return 1;
+}
+
+int
+Serial::readable() {
+  return serial_readable(NULL);
+}
+
+void
+Ticker::attach_us(void (*fptr)(void), timestamp_t t) {
+  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
+}
+void
+Ticker::detach() {
+  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
+}
+
+DigitalIn::DigitalIn(PinName pin) : pin_(pin) {
+}
+
+DigitalIn::DigitalIn(PinName pin, PinMode mode) : pin_(pin) {
+  this->mode(mode);
+}
+
+int
+DigitalIn::read() {
+  return !!(get_gpio_state() & (1 << pin_));
+}
+
+void
+DigitalIn::mode(PinMode pull) {
+  fprintf(stderr, "Unhandled: DigitalIn::mode(%d) on pin %d\n", pull, pin_);
+}
+
+int
+DigitalIn::is_connected() {
+  fprintf(stderr, "Unhandled: DigitalIn::is_connected() on pin %d\n", pin_);
+  return true;
+}
+
+AnalogIn::AnalogIn(PinName pin) {
+  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
+}
+float
+AnalogIn::read() {
+  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
+  return 0;
+}
+unsigned short
+AnalogIn::read_u16() {
+  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
+  return 0;
+}
+
+I2C::I2C(PinName sda, PinName scl) {
+  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
+}
+void
+I2C::frequency(int hz) {
+  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
+}
+int
+I2C::read(int address, char* data, int length, bool repeated) {
+  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
+}
+int
+I2C::read(int ack) {
+  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
+}
+int
+I2C::write(int address, const char* data, int length, bool repeated) {
+  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
+}
+int
+I2C::write(int data) {
+  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
+}
+void
+I2C::start(void) {
+  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
+}
+void
+I2C::stop(void) {
+  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
+}
+
+PwmOut::PwmOut(PinName pin) {
+  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
+}
+void
+PwmOut::write(float value) {
+  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
+}
+float
+PwmOut::read() {
+  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
+  return 0;
+}
+void
+PwmOut::period(float seconds) {
+  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
+}
+void
+PwmOut::period_ms(int ms) {
+  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
+}
+void
+PwmOut::period_us(int us) {
+  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
+}
+void
+PwmOut::pulsewidth(float seconds) {
+  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
+}
+void
+PwmOut::pulsewidth_ms(int ms) {
+  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
+}
+void
+PwmOut::pulsewidth_us(int us) {
+  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
+}
+}
+
+namespace {
+volatile uint32_t _gpio_state = (1 << 17) & (1 << 26);
 volatile uint32_t _gpio_output = 0;
 
 bool gpio_is_output(uint32_t pin_number) {
@@ -174,8 +337,8 @@ bool gpio_is_output(uint32_t pin_number) {
 
 void
 nrf_gpio_range_cfg_output(uint32_t pin_range_start, uint32_t pin_range_end) {
-  for (int i = 0; i < pin_range_start; ++i) {
-    _gpio_output |= 1 << i;
+  for (int i = pin_range_start; i < pin_range_end; ++i) {
+    _gpio_output |= (1 << i);
   }
 }
 void
@@ -185,11 +348,10 @@ nrf_gpio_pin_set(uint32_t pin_number) {
 void
 nrf_gpio_pins_set(uint32_t pin_mask) {
   if ((_gpio_output & pin_mask) != pin_mask) {
-    //fprintf(stderr, "Setting non-output pin.\n");
-    //return;
+    fprintf(stderr, "Setting non-output pin (output: %08x pins: %08x).\n", _gpio_output, pin_mask);
+    return;
   }
   _gpio_state |= pin_mask;
-  //fprintf(stderr, "GPIO: %08x\n", _gpio_state);
 }
 void
 nrf_gpio_pin_clear(uint32_t pin_number) {
@@ -198,9 +360,16 @@ nrf_gpio_pin_clear(uint32_t pin_number) {
 void
 nrf_gpio_pins_clear(uint32_t pin_mask) {
   if ((_gpio_output & pin_mask) != pin_mask) {
-    //fprintf(stderr, "Clearing non-output pin.\n");
-    //return;
+    fprintf(stderr, "Clearing non-output pin (output: %08x pins: %08x).\n", _gpio_output, pin_mask);
+    return;
   }
   _gpio_state &= ~pin_mask;
-  //fprintf(stderr, "GPIO: %08x\n", _gpio_state);
+}
+
+uint32_t get_gpio_state() {
+  return _gpio_state;
+}
+
+void set_gpio_state(uint32_t state) {
+  _gpio_state = state;
 }

@@ -29,13 +29,19 @@ public:
 };
 
 class DigitalIn {
-public:
+ public:
   DigitalIn(PinName pin);
   DigitalIn(PinName pin, PinMode mode);
   int read();
 
   void mode(PinMode pull);
   int is_connected();
+
+  operator int() {
+    return read();
+  }
+ private:
+  PinName pin_;
 };
 
 class AnalogIn {
@@ -43,6 +49,11 @@ public:
   AnalogIn(PinName pin);
   float read();
   unsigned short read_u16();
+  operator float() {
+    return read();
+  }
+ private:
+  PinName pin_;
 };
 
 class Serial {
@@ -55,7 +66,7 @@ public:
 
   // Stream:
   int (putc)(int c);
-  int getc();
+  int (getc)();
 };
 
 class I2C {
