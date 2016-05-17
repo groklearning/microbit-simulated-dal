@@ -497,16 +497,15 @@ MicroBit::sleep(int milliseconds) {
 }
 void
 MicroBit::seedRandom() {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
+  srand(0);
 }
 void
 MicroBit::seedRandom(uint32_t seed) {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
+  srand(seed);
 }
 int
 MicroBit::random(int max) {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
-  return 0;
+  return rand() % max;
 }
 void
 MicroBit::systemTick() {

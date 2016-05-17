@@ -17,7 +17,7 @@
 #include "ticker_dal.h"
 
 namespace {
-uint8_t serial_buffer[1024];
+uint8_t serial_buffer[10240];
 volatile uint serial_buffer_head = 0;
 volatile uint serial_buffer_tail = 0;
 
@@ -73,8 +73,10 @@ serial_getc(serial_t* obj) {
 }
 void
 serial_putc(serial_t* obj, int c) {
-  putc(c, stdout);
-  fflush(stdout);
+  if (c != '\r') {
+    putc(c, stdout);
+    fflush(stdout);
+  }
 }
 int
 serial_readable(serial_t* obj) {
@@ -328,7 +330,7 @@ PwmOut::pulsewidth_us(int us) {
 }
 
 namespace {
-volatile uint32_t _gpio_state = (1 << 17) & (1 << 26);
+volatile uint32_t _gpio_state = (1 << 17) | (1 << 26);
 volatile uint32_t _gpio_output = 0;
 
 bool gpio_is_output(uint32_t pin_number) {

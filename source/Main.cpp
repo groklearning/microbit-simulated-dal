@@ -229,9 +229,9 @@ main_thread(void*) {
   epoll_ctl(epoll_fd, EPOLL_CTL_ADD, timer_fd, &ev_timer);
   struct itimerspec timer_spec;
   timer_spec.it_interval.tv_sec = 0;
-  timer_spec.it_interval.tv_nsec = 160000;
+  timer_spec.it_interval.tv_nsec = 16000 * 375;
   timer_spec.it_value.tv_sec = 0;
-  timer_spec.it_value.tv_nsec = 160000;
+  timer_spec.it_value.tv_nsec = 16000 * 375;
   timerfd_settime(timer_fd, 0, &timer_spec, NULL);
 
   // Open the events pipe.
@@ -263,7 +263,7 @@ main_thread(void*) {
 
     for (int n = 0; n < nfds; ++n) {
       if (events[n].data.fd == STDIN_FILENO) {
-        uint8_t buf[64];
+        uint8_t buf[10240];
         ssize_t len = read(STDIN_FILENO, &buf, sizeof(buf));
         if (len == -1) {
           continue;
@@ -273,7 +273,6 @@ main_thread(void*) {
         }
         signal_interrupt();
       } else if (events[n].data.fd == notify_fd) {
-	fprintf(stderr, "inotify event\n");
         uint8_t buf[4096] __attribute__((aligned(__alignof__(inotify_event))));
         ssize_t len = read(notify_fd, buf, sizeof(buf));
         if (len == -1) {
@@ -291,15 +290,17 @@ main_thread(void*) {
 	uint64_t t;
 	read(timer_fd, &t, sizeof(uint64_t));
 
-	ticker_on_tick();
-        signal_interrupt();
-	++ticks;
-	if (ticks > 375) {
+	for (int i = 0; i < 375; ++i) {
+	  ticker_on_tick();
+	  ++ticks;
+	}
+	if (ticks >= 375) {
 	  ticker_on_macrotick();
+	  signal_interrupt();
 	  ticks = 0;
 	  ++macroticks;
 
-	  if (macroticks > 100) {
+	  if (macroticks >= 10) {
 	    check_led_updates(updates_fd);
 	    macroticks = 0;
 	  }
@@ -355,9 +356,34 @@ handle_sigint(int sig) {
 typedef void* (*thread_start_fn)(void*);
 }
 
+extern "C" {
+  typedef uint8_t byte;
+  typedef struct _appended_script_t {
+    byte header[2]; // should be "MP"
+    uint16_t len; // length of script stored little endian
+    char str[]; // data of script
+  } appended_script_t;
+  
+  struct _appended_script_t* initial_script;
+}
+
 int
-main(int, char**) {
+main(int argc, char** argv) {
   unbuffered_terminal(true);
+
+  char script[102400] = {0};
+  int program_fd = open("program.py", O_RDONLY);
+  if (program_fd != -1) {
+    ssize_t len = read(program_fd, script, sizeof(script));
+    script[len] = 0;
+  }
+
+  //char script[] = "from microbit import *\ndef foo():\n  display.show(Image.HEART if button_a.is_pressed() else Image.GIRAFFE)\n  sleep(10)\n\n\ndef bar():\n  while True:\n    foo()\n\n\n";
+  initial_script = static_cast<_appended_script_t*>(malloc(sizeof(initial_script) + strlen(script) + 2));
+  initial_script->header[0] = 'M';
+  initial_script->header[1] = 'P';
+  initial_script->len = strlen(script);
+  strcpy(initial_script->str, script);
 
   struct sigaction sa;
   sa.sa_handler = handle_sigint;
@@ -385,6 +411,8 @@ main(int, char**) {
 
   pthread_cond_destroy(&interrupt_signal);
   pthread_mutex_destroy(&interrupt_lock);
+
+  free(initial_script);
 
   unbuffered_terminal(false);
   return 0;
