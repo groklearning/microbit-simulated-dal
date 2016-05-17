@@ -14,6 +14,7 @@
 #include "spi_api.h"
 
 #include "Hardware.h"
+#include "ticker_dal.h"
 
 namespace {
 uint8_t serial_buffer[1024];
@@ -333,6 +334,67 @@ volatile uint32_t _gpio_output = 0;
 bool gpio_is_output(uint32_t pin_number) {
   return (_gpio_output >> pin_number) & 1;
 }
+
+uint32_t _led_brightness[25] = {0};
+const uint32_t LED_GPIO_MASK = 0xfff << 4;
+uint32_t _last_gpio_led_state = 0;
+uint32_t _last_gpio_led_ticks = 0;
+
+// The LED matrix is driven as a 3 rows by 9 columns grid.
+// This table is a mapping of the 5x5 grid to the 3x9 grid.
+// Each entry is a row pin (13+r) and a column pin (4+c).
+// To turn on a LED, it sets the row high and the column low.
+// Note that 3x9=27, so two states are unused ({1,7}, {1,8}).
+struct LedPins {
+  uint8_t r;
+  uint8_t c;
+};
+const LedPins led_pin_map[25] = {
+    {0, 0},  // 0, 0
+    {1, 3},  // 1, 0
+    {0, 1},  // 2, 0
+    {1, 4},  // 3, 0
+    {0, 2},  // 4, 0
+    {2, 3},  // 0, 1
+    {2, 4},  // 1, 1
+    {2, 5},  // 2, 1
+    {2, 6},  // 3, 1
+    {2, 7},  // 4, 1
+    {1, 1},  // 0, 2
+    {0, 8},  // 1, 2
+    {1, 2},  // 2, 2
+    {2, 8},  // 3, 2
+    {1, 0},  // 4, 2
+    {0, 7},  // 0, 3
+    {0, 6},  // 1, 3
+    {0, 5},  // 2, 3
+    {0, 4},  // 3, 3
+    {0, 3},  // 4, 3
+    {2, 2},  // 0, 4
+    {1, 6},  // 1, 4
+    {2, 0},  // 2, 4
+    {1, 5},  // 3, 4
+    {2, 1},  // 4, 4
+};
+
+void
+print_row_col_bits(uint32_t gpio) {
+  for (int i = 0; i < 3; ++i) {
+    fprintf(stderr, "%c", (gpio & (1 << (13 + i))) ? '1' : '0');
+  }
+  fprintf(stderr, "  ");
+  for (int i = 0; i < 9; ++i) {
+    fprintf(stderr, "%c", (gpio & (1 << (4 + i))) ? '1' : '0');
+  }
+  fprintf(stderr, "\n");
+}
+
+bool
+is_led_on(int led, uint32_t gpio_state) {
+  int row_pin = 13 + led_pin_map[led].r;
+  int col_pin = 4 + led_pin_map[led].c;
+  return (gpio_state & (1 << row_pin)) && !(gpio_state & (1 << col_pin));
+}
 }
 
 void
@@ -351,7 +413,8 @@ nrf_gpio_pins_set(uint32_t pin_mask) {
     fprintf(stderr, "Setting non-output pin (output: %08x pins: %08x).\n", _gpio_output, pin_mask);
     return;
   }
-  _gpio_state |= pin_mask;
+
+  set_gpio_state(get_gpio_state() | pin_mask);
 }
 void
 nrf_gpio_pin_clear(uint32_t pin_number) {
@@ -363,7 +426,8 @@ nrf_gpio_pins_clear(uint32_t pin_mask) {
     fprintf(stderr, "Clearing non-output pin (output: %08x pins: %08x).\n", _gpio_output, pin_mask);
     return;
   }
-  _gpio_state &= ~pin_mask;
+
+  set_gpio_state(get_gpio_state() & ~pin_mask);
 }
 
 uint32_t get_gpio_state() {
@@ -371,5 +435,26 @@ uint32_t get_gpio_state() {
 }
 
 void set_gpio_state(uint32_t state) {
+  //if ((new_state & LED_GPIO_MASK) != _last_gpio_led_state) {
+  if (state != _last_gpio_led_state) {
+    uint32_t now_ticks = get_ticks();
+    if (now_ticks > _last_gpio_led_ticks) {
+      uint32_t duration = now_ticks - _last_gpio_led_ticks;
+      for (int led = 0; led < 25; ++led) {
+	if (is_led_on(led, _last_gpio_led_state)) {
+	  _led_brightness[led] += duration;
+	}
+      }
+    }
+
+    _last_gpio_led_state = state;//(new_state & LED_GPIO_MASK);
+    _last_gpio_led_ticks = now_ticks;
+  }
+
   _gpio_state = state;
+}
+
+void get_led_brightness(uint32_t* leds) {
+  memcpy(leds, _led_brightness, sizeof(_led_brightness));
+  memset(_led_brightness, 0, sizeof(_led_brightness));
 }

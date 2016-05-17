@@ -3,17 +3,19 @@ extern "C" void app_main();
 #include <errno.h>
 #include <fcntl.h>
 #include <pthread.h>
+#include <setjmp.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/epoll.h>
 #include <sys/inotify.h>
+#include <sys/timerfd.h>
 #include <termios.h>
 #include <unistd.h>
 
-#include <type_traits>
 #include <algorithm>
+#include <type_traits>
 
 #include "Hardware.h"
 #include "ticker_dal.h"
@@ -25,6 +27,10 @@ extern "C" {
 namespace {
 pthread_cond_t interrupt_signal;
 pthread_mutex_t interrupt_lock;
+
+volatile bool shutdown = false;
+
+jmp_buf code_quit_jmp;
 }
 
 void
@@ -32,6 +38,10 @@ __wait_for_interrupt() {
   pthread_mutex_lock(&interrupt_lock);
   pthread_cond_wait(&interrupt_signal, &interrupt_lock);
   pthread_mutex_unlock(&interrupt_lock);
+
+  if (shutdown) {
+    longjmp(code_quit_jmp, 1);
+  }
 }
 
 void
@@ -52,134 +62,51 @@ signal_interrupt() {
 
 void*
 code_thread(void*) {
-  app_main();
-}
-
-void*
-serial_thread(void*) {
-  while (true) {
-    uint8_t buf[64];
-    ssize_t nbytes = read(STDIN_FILENO, &buf, sizeof(buf));
-    for (ssize_t i = 0; i < nbytes; ++i) {
-      serial_add_byte(buf[i]);
-    }
+  if (setjmp(code_quit_jmp) == 0) {
+    app_main();
   }
   return NULL;
 }
 
-void*
-timer_thread(void*) {
-  while (true) {
-    for (int i = 0; i < 375; ++i) {
-      usleep(16);
-      ticker_on_tick();
-      signal_interrupt();
-    }
-    ticker_on_macrotick();
-  }
-}
-
-// The LED matrix is driven as a 3 rows by 9 columns grid.
-// This table is a mapping of the 5x5 grid to the 3x9 grid.
-// Each entry is a row pin (13+r) and a column pin (4+c).
-// To turn on a LED, it sets the row high and the column low.
-// Note that 3x9=27, so two states are unused ({1,7}, {1,8}).
-struct LedPins {
-  uint8_t r;
-  uint8_t c;
-};
-const LedPins led_pin_map[25] = {
-    {0, 0},  // 0, 0
-    {1, 3},  // 1, 0
-    {0, 1},  // 2, 0
-    {1, 4},  // 3, 0
-    {0, 2},  // 4, 0
-    {2, 3},  // 0, 1
-    {2, 4},  // 1, 1
-    {2, 5},  // 2, 1
-    {2, 6},  // 3, 1
-    {2, 7},  // 4, 1
-    {1, 1},  // 0, 2
-    {0, 8},  // 1, 2
-    {1, 2},  // 2, 2
-    {2, 8},  // 3, 2
-    {1, 0},  // 4, 2
-    {0, 7},  // 0, 3
-    {0, 6},  // 1, 3
-    {0, 5},  // 2, 3
-    {0, 4},  // 3, 3
-    {0, 3},  // 4, 3
-    {2, 2},  // 0, 4
-    {1, 6},  // 1, 4
-    {2, 0},  // 2, 4
-    {1, 5},  // 3, 4
-    {2, 1},  // 4, 4
-};
-
 void
-print_row_col_bits(uint32_t gpio) {
-  for (int i = 0; i < 3; ++i) {
-    fprintf(stderr, "%c", (gpio & (1 << (13 + i))) ? '1' : '0');
+check_led_updates(int updates_fd) {
+  uint32_t led_ticks[25] = {0};
+  static uint32_t leds[25] = {0};
+  get_led_brightness(led_ticks);
+  /*for (int y = 0; y < 5; ++y) {
+    for (int x = 0; x < 5; ++x) {
+      fprintf(stderr, "%9d, ", led_ticks[y * 5 + x]);
+    }
+    fprintf(stderr, "\n");
   }
-  fprintf(stderr, "  ");
-  for (int i = 0; i < 9; ++i) {
-    fprintf(stderr, "%c", (gpio & (1 << (4 + i))) ? '1' : '0');
+  fprintf(stderr, "\n");*/
+
+  bool diff = false;
+  for (int i = 0; i < 25; ++i) {
+    int b = (led_ticks[i] > 100) ? 9 : 0;
+    if (b != leds[i]) {
+      diff = true;
+      leds[i] = b;
+    }
   }
-  fprintf(stderr, "\n");
-}
 
-bool
-is_led_on(int led, uint32_t gpio_state) {
-  int row_pin = 13 + led_pin_map[led].r;
-  int col_pin = 4 + led_pin_map[led].c;
-  return (gpio_state & (1 << row_pin)) && !(gpio_state & (1 << col_pin));
-}
-
-uint8_t led_brightness[25] = { 0 };
-
-void*
-updates_thread(void*) {
-  int updates_fd = open("___device_updates", O_CREAT | O_TRUNC | O_WRONLY, S_IRUSR | S_IWUSR);
-
-  while (true) {
-    uint32_t leds[25] = {0};
-    for (int i = 0; i < 2500; ++i) {
-      usleep(10);
-      uint32_t gpio = get_gpio_state();
-      for (int led = 0; led < 25; ++led) {
-        if (is_led_on(led, gpio)) {
-          ++leds[led];
-        }
+  if (diff) {
+    char json[1024];
+    char* jsonp = json;
+    char* jsonp_end = json + sizeof(json);
+    snprintf(jsonp, jsonp_end - jsonp, "[{ \"type\": \"microbit_leds\", \"data\": { \"b\": [");
+    jsonp += strnlen(jsonp, jsonp_end - jsonp);
+    for (int y = 0; y < 5; ++y) {
+      for (int x = 0; x < 5; ++x) {
+        snprintf(jsonp, jsonp_end - jsonp, "%d,", leds[y * 5 + x]);
+        jsonp += strnlen(jsonp, jsonp_end - jsonp);
       }
     }
-    
-    bool diff = false;
-    for (int i = 0; i < 25; ++i) {
-      int b = std::min(9U, leds[i] / 80);
-      if (b != led_brightness[i]) {
-	diff = true;
-	led_brightness[i] = b;
-      }
-    }
-
-    if (diff) {
-      char json[1024];
-      char* jsonp = json;
-      char* jsonp_end = json + sizeof(json);
-      snprintf(jsonp, jsonp_end - jsonp, "[{ \"type\": \"microbit_leds\", \"data\": { \"b\": [");
-      jsonp += strnlen(jsonp, jsonp_end - jsonp);
-      for (int y = 0; y < 5; ++y) {
-	for (int x = 0; x < 5; ++x) {
-	  snprintf(jsonp, jsonp_end - jsonp, "%d,", led_brightness[y*5 + x]);
-	  jsonp += strnlen(jsonp, jsonp_end - jsonp);
-	}
-      }
-      // Remove trailing comma.
-      jsonp -= 1;
-      snprintf(jsonp, jsonp_end - jsonp, "]}}]\n");
-      jsonp += strnlen(jsonp, jsonp_end - jsonp);
-      write(updates_fd, json, jsonp - json);
-    }
+    // Remove trailing comma.
+    jsonp -= 1;
+    snprintf(jsonp, jsonp_end - jsonp, "]}}]\n");
+    jsonp += strnlen(jsonp, jsonp_end - jsonp);
+    write(updates_fd, json, jsonp - json);
   }
 }
 
@@ -225,7 +152,7 @@ process_client_json(const json_value* json) {
       fprintf(stderr, "Event missing type and/or data.\n");
     } else {
       if (strncmp(event_type->as.string, "microbit_button", 15) == 0) {
-	process_client_button(event_data);
+        process_client_button(event_data);
       }
     }
     event = event->next;
@@ -257,47 +184,141 @@ process_client_event(int fd) {
     if (!*line_end) {
       break;
     }
-    
+
     line_start = line_end + 1;
   }
 }
 
 void*
-client_thread(void*) {
-  // Create and truncate the file.
+main_thread(void*) {
+  const int MAX_EVENTS = 10;
+  int epoll_fd = epoll_create1(0);
+
+  int updates_fd = open("___device_updates", O_CREAT | O_TRUNC | O_WRONLY, S_IRUSR | S_IWUSR);
+
+  // Add non-blocking stdin to epoll set.
+  struct epoll_event ev_stdin;
+  fcntl(STDIN_FILENO, F_SETFL, fcntl(STDIN_FILENO, F_GETFL, 0) | O_NONBLOCK);
+  ev_stdin.events = EPOLLIN;
+  ev_stdin.data.fd = STDIN_FILENO;
+  epoll_ctl(epoll_fd, EPOLL_CTL_ADD, STDIN_FILENO, &ev_stdin);
+
+  // Create and truncate the client events file.
   int client_fd = open("___client_events", O_CREAT | O_TRUNC | O_RDONLY, S_IRUSR | S_IWUSR);
 
-  // Set up a notify for the file.
+  // Set up a notify for the file and add to epoll set.
+  struct epoll_event ev_client;
   int notify_fd = inotify_init1(0);
   int client_wd = inotify_add_watch(notify_fd, "___client_events", IN_MODIFY);
+  if (client_wd == -1) {
+    perror("add watch");
+    return NULL;
+  }
+  ev_client.events = EPOLLIN;
+  ev_client.data.fd = notify_fd;
+  if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, notify_fd, &ev_client) == -1) {
+    perror("epoll_ctl");
+    return NULL;
+  }
 
-  while (true) {
-    uint8_t buf[4096] __attribute__ ((aligned(__alignof__(inotify_event))));
-    ssize_t len = read(notify_fd, buf, sizeof(buf));
-    if (len == -1 && errno != EAGAIN) {
-      perror("inotify read");
-      break;
+  // Set up a timer for the ticker.
+  int timer_fd = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK);
+  struct epoll_event ev_timer;
+  ev_timer.events = EPOLLIN;
+  ev_timer.data.fd = timer_fd;
+  epoll_ctl(epoll_fd, EPOLL_CTL_ADD, timer_fd, &ev_timer);
+  struct itimerspec timer_spec;
+  timer_spec.it_interval.tv_sec = 0;
+  timer_spec.it_interval.tv_nsec = 160000;
+  timer_spec.it_value.tv_sec = 0;
+  timer_spec.it_value.tv_nsec = 160000;
+  timerfd_settime(timer_fd, 0, &timer_spec, NULL);
+
+  // Open the events pipe.
+  char* client_pipe_str = getenv("GROK_CLIENT_PIPE");
+  int client_pipe_fd = -1;
+  if (client_pipe_str != NULL) {
+    client_pipe_fd = atoi(client_pipe_str);
+    fcntl(client_pipe_fd, F_SETFL, fcntl(client_pipe_fd, F_GETFL, 0) | O_NONBLOCK);
+    struct epoll_event ev_client_pipe;
+    ev_client_pipe.events = EPOLLIN;
+    ev_client_pipe.data.fd = client_pipe_fd;
+    epoll_ctl(epoll_fd, EPOLL_CTL_ADD, client_pipe_fd, &ev_client_pipe);
+  }
+
+  int ticks = 0;
+  int macroticks = 0;
+
+  while (!shutdown) {
+    struct epoll_event events[MAX_EVENTS];
+    int nfds = epoll_wait(epoll_fd, events, MAX_EVENTS, -1);
+    if (nfds == -1) {
+      if (errno == EINTR) {
+        // Continue so that we'll catch the shutdown flag above.
+        continue;
+      }
+      perror("epoll wait\n");
+      exit(1);
     }
 
-    const struct inotify_event* event;
-    for(uint8_t* p = buf; p < buf + len; p += sizeof(inotify_event) + event->len) {
-      event = reinterpret_cast<inotify_event*>(p);
-      if (event->wd == client_wd) {
-	process_client_event(client_fd);
+    for (int n = 0; n < nfds; ++n) {
+      if (events[n].data.fd == STDIN_FILENO) {
+        uint8_t buf[64];
+        ssize_t len = read(STDIN_FILENO, &buf, sizeof(buf));
+        if (len == -1) {
+          continue;
+        }
+        for (ssize_t i = 0; i < len; ++i) {
+          serial_add_byte(buf[i]);
+        }
+        signal_interrupt();
+      } else if (events[n].data.fd == notify_fd) {
+	fprintf(stderr, "inotify event\n");
+        uint8_t buf[4096] __attribute__((aligned(__alignof__(inotify_event))));
+        ssize_t len = read(notify_fd, buf, sizeof(buf));
+        if (len == -1) {
+          continue;
+        }
+
+        const struct inotify_event* event;
+        for (uint8_t* p = buf; p < buf + len; p += sizeof(inotify_event) + event->len) {
+          event = reinterpret_cast<inotify_event*>(p);
+          if (event->wd == client_wd) {
+            process_client_event(client_fd);
+          }
+        }
+      } else if (events[n].data.fd == timer_fd) {
+	uint64_t t;
+	read(timer_fd, &t, sizeof(uint64_t));
+
+	ticker_on_tick();
+        signal_interrupt();
+	++ticks;
+	if (ticks > 375) {
+	  ticker_on_macrotick();
+	  ticks = 0;
+	  ++macroticks;
+
+	  if (macroticks > 100) {
+	    check_led_updates(updates_fd);
+	    macroticks = 0;
+	  }
+	}
+      } else if (events[n].data.fd == client_pipe_fd) {
+	process_client_event(client_pipe_fd);
       }
     }
   }
 
+  signal_interrupt();
+
   close(notify_fd);
   close(client_fd);
-  
-  while (true) {
-    uint8_t buf[1024];
-    ssize_t nbytes = read(client_fd, &buf, sizeof(buf));
-    fprintf(stderr, "client event %d\n", nbytes);
-  }
+  close(timer_fd);
+  close(updates_fd);
+
+  return NULL;
 }
-  
 
 void
 unbuffered_terminal(bool enable) {
@@ -316,10 +337,19 @@ unbuffered_terminal(bool enable) {
   }
 }
 
-void handle_sigint(int sig) {
-  fprintf(stderr, "INT\n");
-  unbuffered_terminal(false);
-  exit(1);
+void
+handle_sigint(int sig) {
+  if (shutdown) {
+    // Second time, something has gone wrong, so do minimal cleanup and exit.
+    unbuffered_terminal(false);
+    exit(1);
+  } else {
+    // Attempt a clean shutdown.
+    fprintf(stderr, "\nShutting down...\n");
+    // This will stop the code_thread, timer_thread and updates_thread.
+    shutdown = true;
+    // The main thread will get EINTR back from epoll_wait.
+  }
 }
 
 typedef void* (*thread_start_fn)(void*);
@@ -329,9 +359,13 @@ int
 main(int, char**) {
   unbuffered_terminal(true);
 
-  signal(SIGINT, &handle_sigint);
+  struct sigaction sa;
+  sa.sa_handler = handle_sigint;
+  sigemptyset(&sa.sa_mask);
+  sa.sa_flags = 0;
+  sigaction(SIGINT, &sa, NULL);
 
-  thread_start_fn thread_fns[] = {&code_thread, &serial_thread, &timer_thread, &updates_thread, &client_thread};
+  thread_start_fn thread_fns[] = {&code_thread};
   const int NUM_THREADS = sizeof(thread_fns) / sizeof(thread_start_fn);
   pthread_t threads[NUM_THREADS];
 
@@ -342,7 +376,7 @@ main(int, char**) {
     pthread_create(&threads[i], NULL, thread_fns[i], NULL);
   }
 
-  fprintf(stdout, "Threads running\n");
+  main_thread(NULL);
 
   for (int i = 0; i < NUM_THREADS; ++i) {
     void* result;

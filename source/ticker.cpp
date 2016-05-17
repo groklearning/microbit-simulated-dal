@@ -17,6 +17,9 @@ volatile bool _slow_callback_enabled;
 callback_ptr _slow_callback;
 ticker_callback_ptr _callbacks[3] = {NULL, NULL, NULL};
 callback_ptr _low_pri_callbacks[4] = {NULL, NULL, NULL, NULL};
+
+uint32_t _macro_ticks = 0;
+uint32_t _ticks = 0;
 }
 
 extern "C" {
@@ -57,6 +60,7 @@ set_low_priority_callback(callback_ptr callback, int id) {
 
 void
 ticker_on_tick() {
+  ++_ticks;
   for (int i = 0; i < 3; ++i) {
     //if (
   }
@@ -64,7 +68,16 @@ ticker_on_tick() {
 
 void
 ticker_on_macrotick() {
+  ++_macro_ticks;
   if (_slow_callback && _slow_callback_enabled) {
     _slow_callback();
   }
+}
+
+uint32_t get_ticks() {
+  return _ticks;
+}
+
+uint32_t get_macro_ticks() {
+  return _macro_ticks;
 }
