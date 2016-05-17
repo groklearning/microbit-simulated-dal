@@ -15,6 +15,7 @@
     "inc/gpio",
     "inc/mbed_api",
     "inc/ble",
-    "inc/nrf"
+    "inc/nrf",
+    "inc/json"
   ]
 }

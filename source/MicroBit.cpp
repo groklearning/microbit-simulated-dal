@@ -1008,26 +1008,15 @@ ManagedString::~ManagedString() {
   fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
 }
 
-namespace {
-uint8_t heap[60];
-uint8_t* heap_ptr = heap;
-}
-
 int microbit_heap_init() {
+  return MICROBIT_OK;
 }
 
 void *microbit_malloc(size_t size) {
-  return native_malloc(size);
-  //if (heap_ptr + size > heap + sizeof(heap)) {
-  //  return NULL;
-  //}
-  //void* ret = heap;
-  //heap_ptr += size;
-  //return ret;
+  return malloc(size);
 }
 
 void
 microbit_free(void* p) {
-  //fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
-  return native_free(p);
+  return free(p);
 }
