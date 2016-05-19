@@ -1,8 +1,9 @@
+#include "MicroBit.h"
 #include "DynamicPwm.h"
 #include "ErrorNo.h"
 #include "ExternalEvents.h"
-#include "ManagedString.h"
 #include "MESEvents.h"
+#include "ManagedString.h"
 #include "MicroBitAccelerometer.h"
 #include "MicroBitButton.h"
 #include "MicroBitCompass.h"
@@ -10,16 +11,15 @@
 #include "MicroBitComponent.h"
 #include "MicroBitConfig.h"
 #include "MicroBitCoordinateSystem.h"
-#include "MicroBitLightSensor.h"
 #include "MicroBitDisplay.h"
 #include "MicroBitEvent.h"
 #include "MicroBitFiber.h"
 #include "MicroBitFont.h"
-#include "MicroBit.h"
 #include "MicroBitHeapAllocator.h"
 #include "MicroBitI2C.h"
-#include "MicroBitImage.h"
 #include "MicroBitIO.h"
+#include "MicroBitImage.h"
+#include "MicroBitLightSensor.h"
 #include "MicroBitListener.h"
 #include "MicroBitMatrixMaps.h"
 #include "MicroBitMessageBus.h"
@@ -38,8 +38,9 @@
 #include <stdlib.h>
 #include <sys/time.h>
 #include <sys/types.h>
-#include <unistd.h>
 #include <time.h>
+#include <unistd.h>
+#include <math.h>
 
 #include "Hardware.h"
 
@@ -51,6 +52,7 @@ MicroBitAccelerometer::~MicroBitAccelerometer() {
 int
 MicroBitAccelerometer::update() {
   get_accelerometer(&sample.x, &sample.y, &sample.z);
+  recalculatePitchRoll();
   return 0;
 }
 int
@@ -80,6 +82,23 @@ int
 MicroBitAccelerometer::isIdleCallbackNeeded() {
   return !int1;
 }
+void
+MicroBitAccelerometer::recalculatePitchRoll() {
+  float x = (float)getX(SIMPLE_CARTESIAN);
+  float y = (float)getY(SIMPLE_CARTESIAN);
+  float z = (float)getZ(SIMPLE_CARTESIAN);
+
+  roll = atan2(getY(SIMPLE_CARTESIAN), getZ(SIMPLE_CARTESIAN));
+  pitch = atan(-x / (y * sin(roll) + z * cos(roll)));
+}
+float
+MicroBitAccelerometer::getRollRadians() {
+  return roll;
+}
+float
+MicroBitAccelerometer::getPitchRadians() {
+  return pitch;
+}
 
 // MicroBitCompass.h
 MicroBitCompass::MicroBitCompass(uint16_t id, uint16_t address) : average(), sample(), int1(MICROBIT_PIN_COMPASS_DATA_READY) {
@@ -103,12 +122,28 @@ MicroBitCompass::getPeriod() {
 }
 int
 MicroBitCompass::heading() {
-  fprintf(stderr, "Unsupported: %s\n", __FUNCTION__);
-  return 0;
+  // Precompute the tilt compensation parameters to improve readability.
+  float phi = uBit.accelerometer.getRollRadians();
+  float theta = uBit.accelerometer.getPitchRadians();
+  float x = (float) getX(SIMPLE_CARTESIAN);
+  float y = (float) getY(SIMPLE_CARTESIAN);
+  float z = (float) getZ(SIMPLE_CARTESIAN);
+  
+  // Precompute cos and sin of pitch and roll angles to make the calculation a little more efficient.
+  float sinPhi = sin(phi);
+  float cosPhi = cos(phi);
+  float sinTheta = sin(theta);
+  float cosTheta = cos(theta);
+  
+  float bearing = (360*atan2(z*sinPhi - y*cosPhi, x*cosTheta + y*sinTheta*sinPhi + z*sinTheta*cosPhi)) / (2*PI);
+  
+  if (bearing < 0)
+    bearing += 360.0;
+  
+  return (int) bearing;
 }
 int
 MicroBitCompass::whoAmI() {
-  fprintf(stderr, "Unsupported: %s\n", __FUNCTION__);
   return 0;
 }
 int
@@ -125,8 +160,11 @@ MicroBitCompass::getZ(MicroBitCoordinateSystem system) {
 }
 int
 MicroBitCompass::getFieldStrength() {
-  fprintf(stderr, "Unsupported: %s\n", __FUNCTION__);
-  return 0;
+  double x = getX();
+  double y = getY();
+  double z = getZ();
+  
+  return (int) sqrt(x*x + y*y + z*z);
 }
 int
 MicroBitCompass::readTemperature() {
@@ -135,16 +173,13 @@ MicroBitCompass::readTemperature() {
 }
 int
 MicroBitCompass::calibrate() {
-  fprintf(stderr, "Unsupported: %s\n", __FUNCTION__);
   return 0;
 }
 void
 MicroBitCompass::calibrateAsync() {
-  fprintf(stderr, "Unsupported: %s\n", __FUNCTION__);
 }
 int
 MicroBitCompass::calibrateStart() {
-  fprintf(stderr, "Unsupported: %s\n", __FUNCTION__);
   return 0;
 }
 void
@@ -155,7 +190,7 @@ MicroBitCompass::setCalibration(CompassSample calibration) {
 }
 CompassSample
 MicroBitCompass::getCalibration() {
-  return { 0, 0, 0 };
+  return {0, 0, 0};
 }
 void
 MicroBitCompass::idleTick() {
@@ -619,11 +654,13 @@ MicroBitIO::MicroBitIO(int ID_P0, int ID_P1, int ID_P2, int ID_P3, int ID_P4, in
 {
 }
 
-int microbit_heap_init() {
+int
+microbit_heap_init() {
   return MICROBIT_OK;
 }
 
-void *microbit_malloc(size_t size) {
+void*
+microbit_malloc(size_t size) {
   return malloc(size);
 }
 
