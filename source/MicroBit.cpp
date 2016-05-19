@@ -213,7 +213,7 @@ MicroBit::init() {
 
 void
 MicroBit::reset() {
-  fprintf(stderr, "Unsupported: %s\n", __FUNCTION__);
+  set_reset_flag();
 }
 int
 MicroBit::sleep(int milliseconds) {
@@ -328,8 +328,8 @@ MicroBit::systemVersion() {
 
 void
 MicroBit::panic(int statusCode) {
-  fprintf(stderr, "Panic: %d\n", statusCode);
-  exit(1);
+  fprintf(stderr, "micro:bit panic: %d\n", statusCode);
+  set_panic_flag();
 }
 
 ManagedString
@@ -405,7 +405,7 @@ MicroBitMultiButton::onButtonEvent(MicroBitEvent evt) {
 }
 
 // MicroBitPin.h
-MicroBitPin::MicroBitPin(int id, PinName name, PinCapability capability) {
+MicroBitPin::MicroBitPin(int id, PinName name, PinCapability capability) : capability(capability), name(name) {
 }
 void
 MicroBitPin::disconnect() {
@@ -418,13 +418,17 @@ MicroBitPin::obtainAnalogChannel() {
 }
 int
 MicroBitPin::setDigitalValue(int value) {
-  fprintf(stderr, "Unsupported: %s\n", __FUNCTION__);
-  return 0;
+  set_gpio_pin_output(name);
+  if (value) {
+    set_gpio_state(get_gpio_state() | (1 << name));
+  } else {
+    set_gpio_state(get_gpio_state() & ~(1 << name));
+  }
+  return value;
 }
 int
 MicroBitPin::getDigitalValue() {
-  fprintf(stderr, "Unsupported: %s\n", __FUNCTION__);
-  return 0;
+  return !!(get_gpio_state() & (1 << name));
 }
 int
 MicroBitPin::setAnalogValue(int value) {

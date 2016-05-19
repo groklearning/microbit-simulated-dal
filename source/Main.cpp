@@ -19,6 +19,7 @@ extern "C" void app_main();
 #include <type_traits>
 
 #include "Hardware.h"
+#include "MicroBitPin.h"
 #include "ticker_dal.h"
 
 extern "C" {
@@ -49,6 +50,10 @@ void
 simulated_dal_micropy_vm_hook_loop() {
   pthread_mutex_unlock(&code_lock);
 
+  if (get_reset_flag() || get_panic_flag()) {
+    shutdown = true;
+  }
+
   if (shutdown) {
     longjmp(code_quit_jmp, 1);
   }
@@ -64,6 +69,10 @@ __wait_for_interrupt() {
   pthread_mutex_lock(&interrupt_lock);
   pthread_cond_wait(&interrupt_signal, &interrupt_lock);
   pthread_mutex_unlock(&interrupt_lock);
+
+  if (get_reset_flag() || get_panic_flag()) {
+    shutdown = true;
+  }
 
   if (shutdown) {
     longjmp(code_quit_jmp, 1);
@@ -105,28 +114,121 @@ code_thread(void*) {
   return NULL;
 }
 
+const uint32_t MICROBIT_PIN_3V = INT_MAX;
+const uint32_t MICROBIT_PIN_GND = INT_MAX - 1;
+
+uint32_t MICROBIT_PIN_MAP[23] = {MICROBIT_PIN_P0,  MICROBIT_PIN_P1,  MICROBIT_PIN_P2,  MICROBIT_PIN_P3,  MICROBIT_PIN_P4,  MICROBIT_PIN_P5,
+                                 MICROBIT_PIN_P6,  MICROBIT_PIN_P7,  MICROBIT_PIN_P8,  MICROBIT_PIN_P9,  MICROBIT_PIN_P10, MICROBIT_PIN_P11,
+                                 MICROBIT_PIN_P12, MICROBIT_PIN_P13, MICROBIT_PIN_P14, MICROBIT_PIN_P15, MICROBIT_PIN_P16, MICROBIT_PIN_3V,
+                                 MICROBIT_PIN_3V,  MICROBIT_PIN_P19, MICROBIT_PIN_P20, MICROBIT_PIN_GND, MICROBIT_PIN_GND};
+
 void
 check_gpio_updates(int updates_fd) {
-  
+  static uint32_t prev_pins[23] = {0};
+
+  uint32_t state;
+  uint32_t output;
+  uint32_t pull;
+  uint32_t floating;
+  pthread_mutex_lock(&code_lock);
+  get_gpio_info(&state, &output, &pull, &floating);
+  pthread_mutex_unlock(&code_lock);
+
+  uint32_t pins[23] = {0};
+  for (int i = 0; i < sizeof(pins) / sizeof(uint32_t); ++i) {
+    int pin = MICROBIT_PIN_MAP[i];
+    if (i == 3 || i == 4 || i == 6 || i == 7 || i == 9 || i == 10) {
+      // LED rows and columns.
+      pins[i] = 7;
+    } else if (pin == MICROBIT_PIN_3V) {
+      pins[i] = 1;
+    } else if (pin == MICROBIT_PIN_GND) {
+      pins[i] = 0;
+    } else {
+      if (output & (1 << pin)) {
+        // low-z
+        if (state & (1 << pin)) {
+          // hi
+          pins[i] = 1;
+        } else {
+          // low
+          pins[i] = 0;
+        }
+      } else {
+        // hi-z
+        if (floating & (1 << pin)) {
+          // floating
+          pins[i] = 2;
+        } else {
+          if (pull & (1 << pin)) {
+            // pull-up
+            if (state & (1 << pin)) {
+              pins[i] = 3;
+            } else {
+              pins[i] = 4;
+            }
+          } else {
+            // pull-down
+            if (state & (1 << pin)) {
+              pins[i] = 5;
+            } else {
+              pins[i] = 6;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  if (memcmp(pins, prev_pins, sizeof(prev_pins)) != 0) {
+    char json[1024];
+    char* jsonp = json;
+    char* jsonp_end = json + sizeof(json);
+    snprintf(jsonp, jsonp_end - jsonp, "[{ \"type\": \"microbit_pins\", \"data\": { \"p\": [");
+    jsonp += strnlen(jsonp, jsonp_end - jsonp);
+
+    for (int i = 0; i < sizeof(pins) / sizeof(uint32_t); ++i) {
+      snprintf(jsonp, jsonp_end - jsonp, "%d,", pins[i]);
+      jsonp += strnlen(jsonp, jsonp_end - jsonp);
+    }
+
+    // Remove trailing comma.
+    jsonp -= 1;
+    snprintf(jsonp, jsonp_end - jsonp, "]}}]\n");
+    jsonp += strnlen(jsonp, jsonp_end - jsonp);
+    write(updates_fd, json, jsonp - json);
+
+    memcpy(prev_pins, pins, sizeof(prev_pins));
+  }
 }
 
-int ticks_to_brightness(int ticks) {
-  if (ticks < 5) return 0;
-  if (ticks < 11) return 1;
-  if (ticks < 23) return 2;
-  if (ticks < 40) return 3;
-  if (ticks < 80) return 4;
-  if (ticks < 150) return 5;
-  if (ticks < 300) return 6;
-  if (ticks < 590) return 7;
-  if (ticks < 1100) return 8;
+int
+ticks_to_brightness(int ticks) {
+  if (ticks < 5)
+    return 0;
+  if (ticks < 11)
+    return 1;
+  if (ticks < 23)
+    return 2;
+  if (ticks < 40)
+    return 3;
+  if (ticks < 80)
+    return 4;
+  if (ticks < 150)
+    return 5;
+  if (ticks < 300)
+    return 6;
+  if (ticks < 590)
+    return 7;
+  if (ticks < 1100)
+    return 8;
   return 9;
 }
 
 void
 check_led_updates(int updates_fd) {
-  uint32_t led_ticks[25] = {0};
   static uint32_t leds[25] = {INT_MAX};
+  uint32_t led_ticks[25] = {0};
 
   pthread_mutex_lock(&code_lock);
   get_led_ticks(led_ticks);
@@ -179,7 +281,7 @@ process_client_button(const json_value* data) {
 
   pthread_mutex_lock(&code_lock);
   if (id->as.number == 0) {
-    // Buttons are pull-down.
+    // Buttons have (external) pull-up resistors (so pressing the button sets the pin low).
     if (state->as.number == 0) {
       set_gpio_state(get_gpio_state() | (1 << 17));
     } else {
@@ -245,11 +347,11 @@ process_client_json(const json_value* json) {
       if (strncmp(event_type->as.string, "microbit_button", 15) == 0) {
         process_client_button(event_data);
       } else if (strncmp(event_type->as.string, "microbit_accel", 14) == 0) {
-	process_client_accel(event_data);
+        process_client_accel(event_data);
       } else if (strncmp(event_type->as.string, "microbit_magnet", 15) == 0) {
-	process_client_magnet(event_data);
+        process_client_magnet(event_data);
       } else {
-	fprintf(stderr, "Unknown event type: %s\n", event_type->as.string);
+        fprintf(stderr, "Unknown event type: %s\n", event_type->as.string);
       }
     }
     event = event->next;
@@ -389,20 +491,20 @@ main_thread(void*) {
         uint64_t t;
         read(timer_fd, &t, sizeof(uint64_t));
 
-	pthread_mutex_lock(&code_lock);
-	ticks_until_fire_timer = fire_ticker(ticks_until_fire_timer);
-	pthread_mutex_unlock(&code_lock);
+        pthread_mutex_lock(&code_lock);
+        ticks_until_fire_timer = fire_ticker(ticks_until_fire_timer);
+        pthread_mutex_unlock(&code_lock);
 
-	signal_interrupt();
+        signal_interrupt();
 
-	if (get_macro_ticks() > macroticks_next_led_update) {
-	  check_led_updates(updates_fd);
-	  check_gpio_updates(updates_fd);
-	  macroticks_next_led_update = get_macro_ticks() + 10;
-	}
+        if (get_macro_ticks() > macroticks_next_led_update) {
+          check_led_updates(updates_fd);
+          check_gpio_updates(updates_fd);
+          macroticks_next_led_update = get_macro_ticks() + 10;
+        }
 
-	timer_spec.it_value.tv_nsec = 16000 * ticks_until_fire_timer;
-	timerfd_settime(timer_fd, 0, &timer_spec, NULL);
+        timer_spec.it_value.tv_nsec = 16000 * ticks_until_fire_timer;
+        timerfd_settime(timer_fd, 0, &timer_spec, NULL);
       } else if (events[n].data.fd == client_pipe_fd) {
         process_client_event(client_pipe_fd);
       }
@@ -512,5 +614,10 @@ main(int argc, char** argv) {
   free(initial_script);
 
   unbuffered_terminal(false);
-  return 0;
+
+  if (get_reset_flag()) {
+    return 99;
+  } else {
+    return 0;
+  }
 }

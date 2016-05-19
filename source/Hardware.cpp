@@ -225,6 +225,10 @@ DigitalIn::DigitalIn(PinName pin) : pin_(pin) {
 }
 
 DigitalIn::DigitalIn(PinName pin, PinMode mode) : pin_(pin) {
+  if (pin == 17 || pin == 26) {
+    // External pull-up.
+    mode = PullUp;
+  }
   this->mode(mode);
 }
 
@@ -481,6 +485,13 @@ void set_gpio_pin_pull_mode(uint32_t pin, PinMode mode) {
   }
 }
 
+void get_gpio_info(uint32_t* state, uint32_t* output, uint32_t* pull, uint32_t* floating) {
+  *state = _gpio_state;
+  *output = _gpio_output;
+  *pull = _gpio_pull;
+  *floating = _gpio_float;
+}
+
 void get_led_ticks(uint32_t* leds) {
   memcpy(leds, _led_brightness, sizeof(_led_brightness));
   memset(_led_brightness, 0, sizeof(_led_brightness));
@@ -522,4 +533,25 @@ void get_magnetometer(int32_t* x, int32_t* y, int32_t* z) {
   *y = _magnet_y;
   *z = _magnet_z;
   set_gpio_state(get_gpio_state() | (1 << 29));
+}
+
+namespace {
+volatile bool _reset_flag = false;
+volatile bool _panic_flag = false;
+}
+
+void set_reset_flag() {
+  _reset_flag = true;
+}
+
+bool get_reset_flag() {
+  return _reset_flag;
+}
+
+void set_panic_flag() {
+  _panic_flag = true;
+}
+
+bool get_panic_flag() {
+  return _panic_flag;
 }

@@ -12,6 +12,8 @@ void set_gpio_pin_input(uint32_t);
 void set_gpio_pin_output(uint32_t);
 void set_gpio_pin_pull_mode(uint32_t, PinMode);
 
+void get_gpio_info(uint32_t*, uint32_t*, uint32_t*, uint32_t*);
+
 void get_led_ticks(uint32_t* b);
 
 void set_accelerometer(int16_t x, int16_t y, int16_t z);
@@ -19,5 +21,11 @@ void get_accelerometer(int16_t* x, int16_t* y, int16_t* z);
 
 void set_magnetometer(int32_t x, int32_t y, int32_t z);
 void get_magnetometer(int32_t* x, int32_t* y, int32_t* z);
+
+void set_reset_flag();
+bool get_reset_flag();
+
+void set_panic_flag();
+bool get_panic_flag();
 
 #endif
