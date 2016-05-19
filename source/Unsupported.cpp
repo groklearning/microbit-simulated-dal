@@ -3,6 +3,10 @@
 #include "RefCounted.h"
 #include "PacketBuffer.h"
 
+#include "MicroBit.h"
+#include "MicroBitImage.h"
+#include "MicroBitDisplay.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -55,28 +59,26 @@ DynamicPwm::setPeriod(int period) {
 }
 
 // ManagedString.h
+ManagedString::ManagedString() {
+}
+ManagedString::~ManagedString() {
+}
 StringData*
 ManagedString::leakData() {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
 }
 ManagedString
 ManagedString::substring(int16_t start, int16_t length) {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
 }
 char
 ManagedString::charAt(int16_t index) {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
   return 0;
 }
 void
 ManagedString::initEmpty() {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
 }
 void
 ManagedString::initString(const char* str) {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
 }
-
 
 // PacketBuffer.h
 uint8_t*
@@ -129,4 +131,97 @@ bool
 RefCounted::isReadOnly() {
   fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
   return false;
+}
+
+// MicroBitImage.h
+MicroBitImage::MicroBitImage(const char* s) {
+}
+MicroBitImage::MicroBitImage() {
+}
+MicroBitImage::MicroBitImage(const MicroBitImage& image) {
+}
+MicroBitImage::MicroBitImage(const int16_t x, const int16_t y) {
+}
+MicroBitImage::MicroBitImage(const int16_t x, const int16_t y, const uint8_t* bitmap) {
+}
+MicroBitImage::~MicroBitImage() {
+}
+void
+MicroBitImage::init(const int16_t x, const int16_t y, const uint8_t* bitmap) {
+}
+void
+MicroBitImage::init_empty() {
+}
+ImageData*
+MicroBitImage::leakData() {
+}
+void
+MicroBitImage::clear() {
+}
+int
+MicroBitImage::setPixelValue(int16_t x, int16_t y, uint8_t value) {
+  return 0;
+}
+int
+MicroBitImage::getPixelValue(int16_t x, int16_t y) {
+  return 0;
+}
+int
+MicroBitImage::printImage(int16_t x, int16_t y, const uint8_t* bitmap) {
+  return 0;
+}
+int
+MicroBitImage::paste(const MicroBitImage& image, int16_t x, int16_t y, uint8_t alpha) {
+  return 0;
+}
+int
+MicroBitImage::print(char c, int16_t x, int16_t y) {
+  return 0;
+}
+int
+MicroBitImage::shiftLeft(int16_t n) {
+  return 0;
+}
+int
+MicroBitImage::shiftRight(int16_t n) {
+  return 0;
+}
+int
+MicroBitImage::shiftUp(int16_t n) {
+  return 0;
+}
+int
+MicroBitImage::shiftDown(int16_t n) {
+  return 0;
+}
+ManagedString
+MicroBitImage::toString() {
+}
+MicroBitImage
+MicroBitImage::crop(int startx, int starty, int finx, int finy) {
+}
+bool
+MicroBitImage::isReadOnly() {
+  return false;
+}
+MicroBitImage
+MicroBitImage::clone() {
+}
+
+
+// MicroBitDisplay.h
+MicroBitDisplay::MicroBitDisplay(uint16_t id, uint8_t x, uint8_t y) : font(), image(x * 2, y) {
+}
+MicroBitDisplay::~MicroBitDisplay() {
+}
+void
+MicroBitDisplay::systemTick() {
+}
+void
+MicroBitDisplay::enable() {
+}
+void
+MicroBitDisplay::disable() {
+  // The micro:bit code has its own display handling.
+  // In microbit_init, it disables the DAL's imlementation.
 }

@@ -46,11 +46,11 @@ serial_free(serial_t* obj) {
 }
 void
 serial_baud(serial_t* obj, int baudrate) {
-  fprintf(stderr, "Unhandled: serial_baud\n");
+  fprintf(stderr, "Unsupported: serial_baud\n");
 }
 void
 serial_format(serial_t* obj, int data_bits, SerialParity parity, int stop_bits) {
-  fprintf(stderr, "Unhandled: serial_format\n");
+  fprintf(stderr, "Unsupported: serial_format\n");
 }
 
 void
@@ -89,82 +89,82 @@ serial_writable(serial_t* obj) {
 
 void
 serial_clear(serial_t* obj) {
-  fprintf(stderr, "Unhandled: serial_clear\n");
+  fprintf(stderr, "Unsupported: serial_clear\n");
 }
 void
 serial_break_set(serial_t* obj) {
-  fprintf(stderr, "Unhandled: serial_break_set\n");
+  fprintf(stderr, "Unsupported: serial_break_set\n");
 }
 void
 serial_break_clear(serial_t* obj) {
-  fprintf(stderr, "Unhandled: serial_break_clear\n");
+  fprintf(stderr, "Unsupported: serial_break_clear\n");
 }
 void
 serial_pinout_tx(PinName tx) {
-  fprintf(stderr, "Unhandled: serial_pinout_tx\n");
+  fprintf(stderr, "Unsupported: serial_pinout_tx\n");
 }
 void
 serial_set_flow_control(serial_t* obj, FlowControl type, PinName rxflow, PinName txflow) {
-  fprintf(stderr, "Unhandled: serial_set_flow_control\n");
+  fprintf(stderr, "Unsupported: serial_set_flow_control\n");
 }
 
 uint8_t
 serial_tx_active(serial_t* obj) {
-  fprintf(stderr, "Unhandled: serial_tx_active\n");
+  fprintf(stderr, "Unsupported: serial_tx_active\n");
 }
 uint8_t
 serial_rx_active(serial_t* obj) {
-  fprintf(stderr, "Unhandled: serial_rx_active\n");
+  fprintf(stderr, "Unsupported: serial_rx_active\n");
 }
 
 void
 spi_init(spi_t* obj, PinName mosi, PinName miso, PinName sclk, PinName ssel) {
-  fprintf(stderr, "Unhandled: spi_init\n");
+  fprintf(stderr, "Unsupported: spi_init\n");
 }
 void
 spi_free(spi_t* obj) {
-  fprintf(stderr, "Unhandled: spi_free\n");
+  fprintf(stderr, "Unsupported: spi_free\n");
 }
 void
 spi_format(spi_t* obj, int bits, int mode, int slave) {
-  fprintf(stderr, "Unhandled: spi_format\n");
+  fprintf(stderr, "Unsupported: spi_format\n");
 }
 void
 spi_frequency(spi_t* obj, int hz) {
-  fprintf(stderr, "Unhandled: spi_frequency\n");
+  fprintf(stderr, "Unsupported: spi_frequency\n");
 }
 int
 spi_master_write(spi_t* obj, int value) {
-  fprintf(stderr, "Unhandled: spi_master_write\n");
+  fprintf(stderr, "Unsupported: spi_master_write\n");
   return 0;
 }
 int
 spi_slave_receive(spi_t* obj) {
-  fprintf(stderr, "Unhandled: spi_slave_receive\n");
+  fprintf(stderr, "Unsupported: spi_slave_receive\n");
   return 0;
 }
 int
 spi_slave_read(spi_t* obj) {
-  fprintf(stderr, "Unhandled: spi_slave_read\n");
+  fprintf(stderr, "Unsupported: spi_slave_read\n");
   return 0;
 }
 void
 spi_slave_write(spi_t* obj, int value) {
-  fprintf(stderr, "Unhandled: spi_slave_write\n");
+  fprintf(stderr, "Unsupported: spi_slave_write\n");
 }
 int
 spi_busy(spi_t* obj) {
-  fprintf(stderr, "Unhandled: spi_busy\n");
+  fprintf(stderr, "Unsupported: spi_busy\n");
   return 0;
 }
 uint8_t
 spi_get_module(spi_t* obj) {
-  fprintf(stderr, "Unhandled: spi_get_module\n");
+  fprintf(stderr, "Unsupported: spi_get_module\n");
   return 0;
 }
 uint8_t
 spi_active(spi_t* obj) {
-  fprintf(stderr, "Unhandled: spi_active\n");
+  fprintf(stderr, "Unsupported: spi_active\n");
   return 0;
 }
 
@@ -191,11 +191,9 @@ Serial::attach(void (*fn)()) {
   if (fn) {
     serial_callback = fn;
     serial_irq_set(NULL, RxIrq, 1);
-    fprintf(stderr, "Serial::attach(RX)\n");
   } else {
     serial_irq_set(NULL, RxIrq, 0);
     serial_callback = NULL;
-    fprintf(stderr, "Serial::attach(~RX)\n");
   }
 }
 
@@ -215,14 +213,15 @@ Serial::readable() {
 
 void
 Ticker::attach_us(void (*fptr)(void), timestamp_t t) {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
+  fprintf(stderr, "Unsupported: Ticker::%s\n", __FUNCTION__);
 }
 void
 Ticker::detach() {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
+  // Micro:bit code doesn't use the DAL ticker, and we don't implement it, so nothing to do here.
 }
 
 DigitalIn::DigitalIn(PinName pin) : pin_(pin) {
+  this->mode(PullDefault);
 }
 
 DigitalIn::DigitalIn(PinName pin, PinMode mode) : pin_(pin) {
@@ -236,102 +235,107 @@ DigitalIn::read() {
 
 void
 DigitalIn::mode(PinMode pull) {
-  fprintf(stderr, "Unhandled: DigitalIn::mode(%d) on pin %d\n", pull, pin_);
+  set_gpio_pin_input(pin_);
+  set_gpio_pin_pull_mode(pin_, pull);
 }
 
 int
 DigitalIn::is_connected() {
-  fprintf(stderr, "Unhandled: DigitalIn::is_connected() on pin %d\n", pin_);
+  fprintf(stderr, "Unsupported: DigitalIn::is_connected() on pin %d\n", pin_);
   return true;
 }
 
 AnalogIn::AnalogIn(PinName pin) {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
+  fprintf(stderr, "Unsupported: %s\n", __FUNCTION__);
 }
 float
 AnalogIn::read() {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
+  fprintf(stderr, "Unsupported: %s\n", __FUNCTION__);
   return 0;
 }
 unsigned short
 AnalogIn::read_u16() {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
+  fprintf(stderr, "Unsupported: %s\n", __FUNCTION__);
   return 0;
 }
 
 I2C::I2C(PinName sda, PinName scl) {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
 }
 void
 I2C::frequency(int hz) {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
+  fprintf(stderr, "Unsupported: %s\n", __FUNCTION__);
 }
 int
 I2C::read(int address, char* data, int length, bool repeated) {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
+  fprintf(stderr, "Unsupported: %s\n", __FUNCTION__);
 }
 int
 I2C::read(int ack) {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
+  fprintf(stderr, "Unsupported: %s\n", __FUNCTION__);
 }
 int
 I2C::write(int address, const char* data, int length, bool repeated) {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
+  fprintf(stderr, "Unsupported: %s\n", __FUNCTION__);
 }
 int
 I2C::write(int data) {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
+  fprintf(stderr, "Unsupported: %s\n", __FUNCTION__);
 }
 void
 I2C::start(void) {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
+  fprintf(stderr, "Unsupported: %s\n", __FUNCTION__);
 }
 void
 I2C::stop(void) {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
+  fprintf(stderr, "Unsupported: %s\n", __FUNCTION__);
 }
 
 PwmOut::PwmOut(PinName pin) {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
+  fprintf(stderr, "Unsupported: %s\n", __FUNCTION__);
 }
 void
 PwmOut::write(float value) {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
+  fprintf(stderr, "Unsupported: %s\n", __FUNCTION__);
 }
 float
 PwmOut::read() {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
+  fprintf(stderr, "Unsupported: %s\n", __FUNCTION__);
   return 0;
 }
 void
 PwmOut::period(float seconds) {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
+  fprintf(stderr, "Unsupported: %s\n", __FUNCTION__);
 }
 void
 PwmOut::period_ms(int ms) {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
+  fprintf(stderr, "Unsupported: %s\n", __FUNCTION__);
 }
 void
 PwmOut::period_us(int us) {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
+  fprintf(stderr, "Unsupported: %s\n", __FUNCTION__);
 }
 void
 PwmOut::pulsewidth(float seconds) {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
+  fprintf(stderr, "Unsupported: %s\n", __FUNCTION__);
 }
 void
 PwmOut::pulsewidth_ms(int ms) {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
+  fprintf(stderr, "Unsupported: %s\n", __FUNCTION__);
 }
 void
 PwmOut::pulsewidth_us(int us) {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
+  fprintf(stderr, "Unsupported: %s\n", __FUNCTION__);
 }
 }
 
 namespace {
 volatile uint32_t _gpio_state = (1 << 17) | (1 << 26);
+// 0 for input (hi-z), 1 for output (low-z).
 volatile uint32_t _gpio_output = 0;
+// 0 for down, 1 for up (only applies in hi-z mode).
+volatile uint32_t _gpio_pull = 0;
+// 0 for not-floating (see _gpio_pull), 1 for floating (only applies in hi-z mode).
+volatile uint32_t _gpio_float = 0;
 
 bool gpio_is_output(uint32_t pin_number) {
   return (_gpio_output >> pin_number) & 1;
@@ -402,7 +406,7 @@ is_led_on(int led, uint32_t gpio_state) {
 void
 nrf_gpio_range_cfg_output(uint32_t pin_range_start, uint32_t pin_range_end) {
   for (int i = pin_range_start; i < pin_range_end; ++i) {
-    _gpio_output |= (1 << i);
+    set_gpio_pin_output(i);
   }
 }
 void
@@ -456,7 +460,66 @@ void set_gpio_state(uint32_t state) {
   _gpio_state = state;
 }
 
-void get_led_brightness(uint32_t* leds) {
+void set_gpio_pin_input(uint32_t pin) {
+  _gpio_output &= ~(1 << pin);
+}
+
+void set_gpio_pin_output(uint32_t pin) {
+  _gpio_output |= (1 << pin);
+}
+
+void set_gpio_pin_pull_mode(uint32_t pin, PinMode mode) {
+  if (mode == PullDown) {
+    _gpio_float &= ~(1 << pin);
+    _gpio_pull &= ~(1 << pin);
+  } else if (mode == PullUp) {
+    _gpio_float &= ~(1 << pin);
+    _gpio_pull |= (1 << pin);
+  } else if (mode == PullNone) {
+    _gpio_float |= (1 << pin);
+    _gpio_pull &= ~(1 << pin);
+  }
+}
+
+void get_led_ticks(uint32_t* leds) {
   memcpy(leds, _led_brightness, sizeof(_led_brightness));
   memset(_led_brightness, 0, sizeof(_led_brightness));
+}
+
+namespace {
+int16_t _accel_x = 0;
+int16_t _accel_y = 1024;
+int16_t _accel_z = 0;
+
+int32_t _magnet_x = 0;
+int32_t _magnet_y = 80000;
+int32_t _magnet_z = 0;
+}
+
+void set_accelerometer(int16_t x, int16_t y, int16_t z) {
+  _accel_x = x;
+  _accel_y = y;
+  _accel_z = z;
+  set_gpio_state(get_gpio_state() & ~(1 << 28));
+}
+
+void get_accelerometer(int16_t* x, int16_t* y, int16_t* z) {
+  *x = _accel_x;
+  *y = _accel_y;
+  *z = _accel_z;
+  set_gpio_state(get_gpio_state() | (1 << 28));
+}
+
+void set_magnetometer(int32_t x, int32_t y, int32_t z) {
+  _magnet_x = x;
+  _magnet_y = y;
+  _magnet_z = z;
+  set_gpio_state(get_gpio_state() & ~(1 << 29));
+}
+
+void get_magnetometer(int32_t* x, int32_t* y, int32_t* z) {
+  *x = _magnet_x;
+  *y = _magnet_y;
+  *z = _magnet_z;
+  set_gpio_state(get_gpio_state() | (1 << 29));
 }

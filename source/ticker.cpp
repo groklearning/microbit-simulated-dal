@@ -13,17 +13,22 @@ typedef int32_t (*ticker_callback_ptr)(void);
 #include <stdio.h>
 
 namespace {
-volatile bool _slow_callback_enabled;
-callback_ptr _slow_callback;
+volatile bool _slow_callback_enabled = false;
+callback_ptr _slow_callback = NULL;
 ticker_callback_ptr _callbacks[3] = {NULL, NULL, NULL};
 callback_ptr _low_pri_callbacks[4] = {NULL, NULL, NULL, NULL};
 
-uint32_t _macro_ticks = 0;
+// One tick is 16us. The fast timers are scheduled in increments of this.
 uint32_t _ticks = 0;
+// One macro tick is 6ms (375 ticks).
+uint32_t _macro_ticks = 0;
+// When _ticks == _time_ticks[i], then timer[i] fires.
+// timer[0-2] are the fast timers, timer[3] is slow.
+uint32_t _timer_ticks[4] = {0};
 }
 
 extern "C" {
-
+// Set up the 6ms callback.
 void
 ticker_init(callback_ptr slow_ticker_callback) {
   _slow_callback_enabled = false;
@@ -43,12 +48,16 @@ ticker_stop(void) {
 int
 clear_ticker_callback(uint32_t index) {
   _callbacks[index] = NULL;
+  _timer_ticks[index] = 0;
 }
 
+// Install a fast callback.
+// This will first fire in 'initial_delay_us' us, then the callback should return
+// a delay in us.
 int
 set_ticker_callback(uint32_t index, ticker_callback_ptr func, int32_t initial_delay_us) {
-  fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
   _callbacks[index] = func;
+  _timer_ticks[index] = _ticks + (initial_delay_us / 16);
 }
 
 int
@@ -58,20 +67,29 @@ set_low_priority_callback(callback_ptr callback, int id) {
 }
 }
 
-void
-ticker_on_tick() {
-  ++_ticks;
+uint32_t
+fire_ticker(uint32_t ticks) {
+  //fprintf(stderr, "fire_ticker(%u)\n", ticks);
+  _ticks += ticks;
+  if (_ticks >= _timer_ticks[3]) {
+    ++_macro_ticks;
+    if (_slow_callback_enabled) {
+      _slow_callback();
+    }
+    _timer_ticks[3] += 375;
+  }
   for (int i = 0; i < 3; ++i) {
-    //if (
+    if (_ticks >= _timer_ticks[i] && _callbacks[i]) {
+      _timer_ticks[i] += _callbacks[i]();
+    }
   }
-}
-
-void
-ticker_on_macrotick() {
-  ++_macro_ticks;
-  if (_slow_callback && _slow_callback_enabled) {
-    _slow_callback();
+  uint32_t next = _ticks + 75;
+  for (int i = 0; i < 4; ++i) {
+    if (_timer_ticks[i] > _ticks && _timer_ticks[i] < next) {
+      next = _timer_ticks[i];
+    }
   }
+  return next - _ticks;
 }
 
 uint32_t get_ticks() {

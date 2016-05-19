@@ -2,6 +2,7 @@ extern "C" void app_main();
 
 #include <errno.h>
 #include <fcntl.h>
+#include <limits.h>
 #include <pthread.h>
 #include <setjmp.h>
 #include <signal.h>
@@ -27,14 +28,39 @@ extern "C" {
 namespace {
 pthread_cond_t interrupt_signal;
 pthread_mutex_t interrupt_lock;
+pthread_mutex_t code_lock;
 
 volatile bool shutdown = false;
 
 jmp_buf code_quit_jmp;
 }
 
+uint64_t
+get_usec() {
+  uint64_t us = 0;
+  struct timespec ts;
+  clock_gettime(CLOCK_MONOTONIC, &ts);
+  unsigned long ms = ts.tv_sec * 1000;
+  ms += ts.tv_nsec / 1000000ULL;
+}
+
+extern "C" {
+void
+simulated_dal_micropy_vm_hook_loop() {
+  pthread_mutex_unlock(&code_lock);
+
+  if (shutdown) {
+    longjmp(code_quit_jmp, 1);
+  }
+
+  pthread_mutex_lock(&code_lock);
+}
+}
+
 void
 __wait_for_interrupt() {
+  pthread_mutex_unlock(&code_lock);
+
   pthread_mutex_lock(&interrupt_lock);
   pthread_cond_wait(&interrupt_signal, &interrupt_lock);
   pthread_mutex_unlock(&interrupt_lock);
@@ -42,6 +68,8 @@ __wait_for_interrupt() {
   if (shutdown) {
     longjmp(code_quit_jmp, 1);
   }
+
+  pthread_mutex_lock(&code_lock);
 }
 
 void
@@ -62,28 +90,58 @@ signal_interrupt() {
 
 void*
 code_thread(void*) {
-  if (setjmp(code_quit_jmp) == 0) {
-    app_main();
+  while (true) {
+    if (setjmp(code_quit_jmp) == 0) {
+      pthread_mutex_lock(&code_lock);
+      app_main();
+      // Normal termination (this should never happen).
+      return NULL;
+    }
+    // A longjmp happened.
+    if (shutdown) {
+      return NULL;
+    }
   }
   return NULL;
 }
 
 void
+check_gpio_updates(int updates_fd) {
+  
+}
+
+int ticks_to_brightness(int ticks) {
+  if (ticks < 5) return 0;
+  if (ticks < 11) return 1;
+  if (ticks < 23) return 2;
+  if (ticks < 40) return 3;
+  if (ticks < 80) return 4;
+  if (ticks < 150) return 5;
+  if (ticks < 300) return 6;
+  if (ticks < 590) return 7;
+  if (ticks < 1100) return 8;
+  return 9;
+}
+
+void
 check_led_updates(int updates_fd) {
   uint32_t led_ticks[25] = {0};
-  static uint32_t leds[25] = {0};
-  get_led_brightness(led_ticks);
+  static uint32_t leds[25] = {INT_MAX};
+
+  pthread_mutex_lock(&code_lock);
+  get_led_ticks(led_ticks);
+  pthread_mutex_unlock(&code_lock);
   /*for (int y = 0; y < 5; ++y) {
     for (int x = 0; x < 5; ++x) {
       fprintf(stderr, "%9d, ", led_ticks[y * 5 + x]);
     }
     fprintf(stderr, "\n");
   }
-  fprintf(stderr, "\n");*/
-
+  fprintf(stderr, "\n");
+  */
   bool diff = false;
   for (int i = 0; i < 25; ++i) {
-    int b = (led_ticks[i] > 100) ? 9 : 0;
+    int b = ticks_to_brightness(led_ticks[i]);
     if (b != leds[i]) {
       diff = true;
       leds[i] = b;
@@ -118,6 +176,8 @@ process_client_button(const json_value* data) {
     fprintf(stderr, "Button event missing id and/or state\n");
     return;
   }
+
+  pthread_mutex_lock(&code_lock);
   if (id->as.number == 0) {
     // Buttons are pull-down.
     if (state->as.number == 0) {
@@ -133,6 +193,37 @@ process_client_button(const json_value* data) {
       set_gpio_state(get_gpio_state() & ~(1 << 26));
     }
   }
+  pthread_mutex_unlock(&code_lock);
+}
+
+void
+process_client_accel(const json_value* data) {
+  const json_value* x = json_value_get(data, "x");
+  const json_value* y = json_value_get(data, "y");
+  const json_value* z = json_value_get(data, "z");
+  if (!x || !y || !z || x->type != JSON_VALUE_TYPE_NUMBER || y->type != JSON_VALUE_TYPE_NUMBER || z->type != JSON_VALUE_TYPE_NUMBER) {
+    fprintf(stderr, "Accelerometer event missing x/y/z.\n");
+    return;
+  }
+
+  pthread_mutex_lock(&code_lock);
+  set_accelerometer(x->as.number, y->as.number, z->as.number);
+  pthread_mutex_unlock(&code_lock);
+}
+
+void
+process_client_magnet(const json_value* data) {
+  const json_value* x = json_value_get(data, "x");
+  const json_value* y = json_value_get(data, "y");
+  const json_value* z = json_value_get(data, "z");
+  if (!x || !y || !z || x->type != JSON_VALUE_TYPE_NUMBER || y->type != JSON_VALUE_TYPE_NUMBER || z->type != JSON_VALUE_TYPE_NUMBER) {
+    fprintf(stderr, "Magnetometer event missing x/y/z.\n");
+    return;
+  }
+
+  pthread_mutex_lock(&code_lock);
+  set_magnetometer(x->as.number, y->as.number, z->as.number);
+  pthread_mutex_unlock(&code_lock);
 }
 
 void
@@ -153,6 +244,12 @@ process_client_json(const json_value* json) {
     } else {
       if (strncmp(event_type->as.string, "microbit_button", 15) == 0) {
         process_client_button(event_data);
+      } else if (strncmp(event_type->as.string, "microbit_accel", 14) == 0) {
+	process_client_accel(event_data);
+      } else if (strncmp(event_type->as.string, "microbit_magnet", 15) == 0) {
+	process_client_magnet(event_data);
+      } else {
+	fprintf(stderr, "Unknown event type: %s\n", event_type->as.string);
       }
     }
     event = event->next;
@@ -229,9 +326,9 @@ main_thread(void*) {
   epoll_ctl(epoll_fd, EPOLL_CTL_ADD, timer_fd, &ev_timer);
   struct itimerspec timer_spec;
   timer_spec.it_interval.tv_sec = 0;
-  timer_spec.it_interval.tv_nsec = 16000 * 375;
+  timer_spec.it_interval.tv_nsec = 0;
   timer_spec.it_value.tv_sec = 0;
-  timer_spec.it_value.tv_nsec = 16000 * 375;
+  timer_spec.it_value.tv_nsec = 16000 * 75;
   timerfd_settime(timer_fd, 0, &timer_spec, NULL);
 
   // Open the events pipe.
@@ -246,8 +343,8 @@ main_thread(void*) {
     epoll_ctl(epoll_fd, EPOLL_CTL_ADD, client_pipe_fd, &ev_client_pipe);
   }
 
-  int ticks = 0;
-  int macroticks = 0;
+  uint32_t ticks_until_fire_timer = 75;
+  uint32_t macroticks_next_led_update = 0;
 
   while (!shutdown) {
     struct epoll_event events[MAX_EVENTS];
@@ -268,9 +365,11 @@ main_thread(void*) {
         if (len == -1) {
           continue;
         }
+        pthread_mutex_lock(&code_lock);
         for (ssize_t i = 0; i < len; ++i) {
           serial_add_byte(buf[i]);
         }
+        pthread_mutex_unlock(&code_lock);
         signal_interrupt();
       } else if (events[n].data.fd == notify_fd) {
         uint8_t buf[4096] __attribute__((aligned(__alignof__(inotify_event))));
@@ -287,26 +386,25 @@ main_thread(void*) {
           }
         }
       } else if (events[n].data.fd == timer_fd) {
-	uint64_t t;
-	read(timer_fd, &t, sizeof(uint64_t));
+        uint64_t t;
+        read(timer_fd, &t, sizeof(uint64_t));
 
-	for (int i = 0; i < 375; ++i) {
-	  ticker_on_tick();
-	  ++ticks;
-	}
-	if (ticks >= 375) {
-	  ticker_on_macrotick();
-	  signal_interrupt();
-	  ticks = 0;
-	  ++macroticks;
+	pthread_mutex_lock(&code_lock);
+	ticks_until_fire_timer = fire_ticker(ticks_until_fire_timer);
+	pthread_mutex_unlock(&code_lock);
 
-	  if (macroticks >= 10) {
-	    check_led_updates(updates_fd);
-	    macroticks = 0;
-	  }
+	signal_interrupt();
+
+	if (get_macro_ticks() > macroticks_next_led_update) {
+	  check_led_updates(updates_fd);
+	  check_gpio_updates(updates_fd);
+	  macroticks_next_led_update = get_macro_ticks() + 10;
 	}
+
+	timer_spec.it_value.tv_nsec = 16000 * ticks_until_fire_timer;
+	timerfd_settime(timer_fd, 0, &timer_spec, NULL);
       } else if (events[n].data.fd == client_pipe_fd) {
-	process_client_event(client_pipe_fd);
+        process_client_event(client_pipe_fd);
       }
     }
   }
@@ -346,8 +444,7 @@ handle_sigint(int sig) {
     exit(1);
   } else {
     // Attempt a clean shutdown.
-    fprintf(stderr, "\nShutting down...\n");
-    // This will stop the code_thread, timer_thread and updates_thread.
+    // This will stop the code_thread on the next instruction or __WFI().
     shutdown = true;
     // The main thread will get EINTR back from epoll_wait.
   }
@@ -357,14 +454,14 @@ typedef void* (*thread_start_fn)(void*);
 }
 
 extern "C" {
-  typedef uint8_t byte;
-  typedef struct _appended_script_t {
-    byte header[2]; // should be "MP"
-    uint16_t len; // length of script stored little endian
-    char str[]; // data of script
-  } appended_script_t;
-  
-  struct _appended_script_t* initial_script;
+typedef uint8_t byte;
+typedef struct _appended_script_t {
+  byte header[2];  // should be "MP"
+  uint16_t len;    // length of script stored little endian
+  char str[];      // data of script
+} appended_script_t;
+
+struct _appended_script_t* initial_script;
 }
 
 int
@@ -378,7 +475,6 @@ main(int argc, char** argv) {
     script[len] = 0;
   }
 
-  //char script[] = "from microbit import *\ndef foo():\n  display.show(Image.HEART if button_a.is_pressed() else Image.GIRAFFE)\n  sleep(10)\n\n\ndef bar():\n  while True:\n    foo()\n\n\n";
   initial_script = static_cast<_appended_script_t*>(malloc(sizeof(initial_script) + strlen(script) + 2));
   initial_script->header[0] = 'M';
   initial_script->header[1] = 'P';
@@ -397,6 +493,7 @@ main(int argc, char** argv) {
 
   pthread_cond_init(&interrupt_signal, NULL);
   pthread_mutex_init(&interrupt_lock, NULL);
+  pthread_mutex_init(&code_lock, NULL);
 
   for (int i = 0; i < NUM_THREADS; ++i) {
     pthread_create(&threads[i], NULL, thread_fns[i], NULL);

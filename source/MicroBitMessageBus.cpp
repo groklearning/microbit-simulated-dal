@@ -594,5 +594,6 @@ MicroBitListener* MicroBitMessageBus::elementAt(int n)
   */
 MicroBitMessageBus::~MicroBitMessageBus()
 {
-    uBit.removeIdleComponent(this);
+  //uBit.removeIdleComponent(this);
+  // this should be in MicroBit::~MicroBit.
 }

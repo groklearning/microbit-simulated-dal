@@ -134,6 +134,7 @@ class MicroBit
       * @endcode
       */
     MicroBit();
+    ~MicroBit();
 
     /**
       * Post constructor initialisation method.
