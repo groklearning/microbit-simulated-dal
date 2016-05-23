@@ -1,5 +1,19 @@
-// ticker.h
+// microbit-micropython implements its own ticker support (in source/lib/ticker.cpp).
+// This is our simulated implementation of that interface (inc/lib/ticker.h).
+// We also implement a few extra methods (defined in Hardware.h) which allow the simulator (Main.cpp) to drive the timers.
+
 #include "nrf.h"
+#include "Hardware.h"
+
+// Some background on the microbit timers:
+// The microbit-micropython code sets up a 16us ticker which it uses to drive four timers.
+// One (timer 3) is fixed at 375 ticks (6ms -- this is the "slow" callback) which the
+// microbit-micropython firmware uses for the display multiplexing, and for polling
+// various state such as the buttons and the accelerometer 'interrupt' pins.
+// The slow callback is passed to ticker_init and implemented as microbit_ticker in main.cpp.
+// Timers 0,1,2 are accessible as the "fast" callbacks (set_ticker_callback) which take
+// an initial delay, then every time they are invoked they return the time (in us) until they should be next invoked.
+
 typedef void (*callback_ptr)(void);
 typedef int32_t (*ticker_callback_ptr)(void);
 #define CYCLES_PER_MICROSECONDS 16
@@ -22,11 +36,13 @@ callback_ptr _low_pri_callbacks[4] = {NULL, NULL, NULL, NULL};
 uint32_t _ticks = 0;
 // One macro tick is 6ms (375 ticks).
 uint32_t _macro_ticks = 0;
+
 // When _ticks == _time_ticks[i], then timer[i] fires.
 // timer[0-2] are the fast timers, timer[3] is slow.
 uint32_t _timer_ticks[4] = {0};
 }
 
+// lib/ticker.h interface.
 extern "C" {
 // Set up the 6ms callback.
 void
@@ -67,10 +83,14 @@ set_low_priority_callback(callback_ptr callback, int id) {
 }
 }
 
+// Hardware.h interface.
+
+// Timer callback. Fires any tickers that have expired since the last call,
+// and returns the number of ticks until the next ticker that needs to be fired.
 uint32_t
 fire_ticker(uint32_t ticks) {
-  //fprintf(stderr, "fire_ticker(%u)\n", ticks);
   _ticks += ticks;
+
   if (_ticks >= _timer_ticks[3]) {
     ++_macro_ticks;
     if (_slow_callback_enabled) {
@@ -83,12 +103,17 @@ fire_ticker(uint32_t ticks) {
       _timer_ticks[i] += _callbacks[i]();
     }
   }
+
+  // Don't wait less than 75 ticks (1/4 of a macrotick) just in case
+  // a new fast ticker needs to be scheduled. (This bounds the scheduling latency
+  // to 1.5ms -- wrong, but not a problem and saves a _lot_ of CPU).
   uint32_t next = _ticks + 75;
   for (int i = 0; i < 4; ++i) {
     if (_timer_ticks[i] > _ticks && _timer_ticks[i] < next) {
       next = _timer_ticks[i];
     }
   }
+  
   return next - _ticks;
 }
 

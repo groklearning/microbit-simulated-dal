@@ -1,3 +1,9 @@
+// Things that we need to provide a definition for to satisfy the linker (e.g. because
+// they're used by the default microbit-dal implementation, but those code paths are
+// never called by microbit-micropython).
+// Either make them completely silent no-ops, or if it's surprising that they're called
+// then log to stderr (to catch changes in the microbit-micropython code).
+
 #include "DynamicPwm.h"
 #include "ManagedString.h"
 #include "RefCounted.h"

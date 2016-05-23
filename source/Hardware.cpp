@@ -1,9 +1,10 @@
+#include <math.h>
 #include <stdio.h>
 
+#include "PinNames.h"
 #include "gpio_api.h"
 #include "gpio_object.h"
 #include "nrf_gpio.h"
-#include "PinNames.h"
 
 #include "buffer.h"
 #include "device.h"
@@ -14,9 +15,10 @@
 #include "spi_api.h"
 
 #include "Hardware.h"
-#include "ticker_dal.h"
 
 namespace {
+// Basic ring buffer for serial data.
+// At least as big as all the other ring buffers involved...
 uint8_t serial_buffer[10240];
 volatile uint serial_buffer_head = 0;
 volatile uint serial_buffer_tail = 0;
@@ -25,6 +27,7 @@ bool serial_irq_rx_enabled = false;
 uart_irq_handler serial_irq = 0;
 }
 
+// Hardware.h
 void
 serial_add_byte(uint8_t c) {
   if (c == '\n') {
@@ -38,6 +41,7 @@ serial_add_byte(uint8_t c) {
   }
 }
 
+// serial_api.h
 void
 serial_init(serial_t* obj, PinName tx, PinName rx) {
 }
@@ -117,6 +121,7 @@ serial_rx_active(serial_t* obj) {
   fprintf(stderr, "Unsupported: serial_rx_active\n");
 }
 
+// spi_api.h
 void
 spi_init(spi_t* obj, PinName mosi, PinName miso, PinName sclk, PinName ssel) {
   fprintf(stderr, "Unsupported: spi_init\n");
@@ -168,7 +173,8 @@ spi_active(spi_t* obj) {
   return 0;
 }
 
-// Misc
+// Misc -- everything in mbed that microbit-micropython uses directly (but probably shouldn't) or
+// used by the microbit-dal code.
 namespace mbed {
 namespace {
 void (*serial_callback)() = NULL;
@@ -225,7 +231,7 @@ DigitalIn::DigitalIn(PinName pin) : pin_(pin) {
 }
 
 DigitalIn::DigitalIn(PinName pin, PinMode mode) : pin_(pin) {
-  if (pin == 17 || pin == 26) {
+  if (pin == BUTTON_A || pin == BUTTON_B) {
     // External pull-up.
     mode = PullUp;
   }
@@ -234,13 +240,12 @@ DigitalIn::DigitalIn(PinName pin, PinMode mode) : pin_(pin) {
 
 int
 DigitalIn::read() {
-  return !!(get_gpio_state() & (1 << pin_));
+  return get_gpio_pin(pin_).is_high() ? 1 : 0;
 }
 
 void
 DigitalIn::mode(PinMode pull) {
-  set_gpio_pin_input(pin_);
-  set_gpio_pin_pull_mode(pin_, pull);
+  get_gpio_pin(pin_).set_input_mode(pull);
 }
 
 int
@@ -332,23 +337,81 @@ PwmOut::pulsewidth_us(int us) {
 }
 }
 
-namespace {
-volatile uint32_t _gpio_state = (1 << 17) | (1 << 26);
-// 0 for input (hi-z), 1 for output (low-z).
-volatile uint32_t _gpio_output = 0;
-// 0 for down, 1 for up (only applies in hi-z mode).
-volatile uint32_t _gpio_pull = 0;
-// 0 for not-floating (see _gpio_pull), 1 for floating (only applies in hi-z mode).
-volatile uint32_t _gpio_float = 0;
-
-bool gpio_is_output(uint32_t pin_number) {
-  return (_gpio_output >> pin_number) & 1;
+// More mbed/nrf stuff used by microbit-micropython directly.
+void
+nrf_gpio_range_cfg_output(uint32_t pin_range_start, uint32_t pin_range_end) {
+  for (int i = pin_range_start; i < pin_range_end; ++i) {
+    get_gpio_pin(i).set_output_mode();
+  }
 }
 
-uint32_t _led_brightness[25] = {0};
-const uint32_t LED_GPIO_MASK = 0xfff << 4;
-uint32_t _last_gpio_led_state = 0;
-uint32_t _last_gpio_led_ticks = 0;
+void
+nrf_gpio_pin_set(uint32_t pin_number) {
+  nrf_gpio_pins_set(1 << pin_number);
+}
+
+void
+nrf_gpio_pins_set(uint32_t pin_mask) {
+  // fprintf(stderr, "nrf_gpio_pins_set: %d\n", get_ticks());
+  for (int i = 0; i < 32; ++i) {
+    if (pin_mask & (1 << i)) {
+      get_gpio_pin(i).set_high();
+    }
+  }
+
+  for (int i = 0; i < 25; ++i) {
+    get_display_led(i).update();
+  }
+}
+
+void
+nrf_gpio_pin_clear(uint32_t pin_number) {
+  nrf_gpio_pins_clear(1 << pin_number);
+
+  // Detect the start of a new row.
+  for (int i = COL1; i <= COL9; ++i) {
+    if (get_gpio_pin(i).is_low()) {
+      return;
+    }
+  }
+  for (int i = ROW1; i <= ROW3; ++i) {
+    if (get_gpio_pin(i).is_high()) {
+      return;
+    }
+  }
+  // And if we've just cleared ROW3, then it's the start of a new frame.
+  if (pin_number != ROW3) {
+    return;
+  }
+
+  // At the start of a new frame, get the matrix leds to re-calculate brightness.
+  for (int i = 0; i < 25; ++i) {
+    get_display_led(i).calculate();
+  }
+}
+
+void
+nrf_gpio_pins_clear(uint32_t pin_mask) {
+  for (int i = 0; i < 32; ++i) {
+    if (pin_mask & (1 << i)) {
+      get_gpio_pin(i).set_low();
+    }
+  }
+
+  for (int i = 0; i < 25; ++i) {
+    get_display_led(i).update();
+  }
+}
+
+// Hardware.h
+
+namespace {
+GpioPin _gpio_pins[32] = {
+    GpioPin(0),  GpioPin(1),  GpioPin(2),  GpioPin(3),  GpioPin(4),  GpioPin(5),  GpioPin(6),
+    GpioPin(7),  GpioPin(8),  GpioPin(9),  GpioPin(10), GpioPin(11), GpioPin(12), GpioPin(13),
+    GpioPin(14), GpioPin(15), GpioPin(16), GpioPin(17), GpioPin(18), GpioPin(19), GpioPin(20),
+    GpioPin(21), GpioPin(22), GpioPin(23), GpioPin(24), GpioPin(25), GpioPin(26), GpioPin(27),
+    GpioPin(28), GpioPin(29), GpioPin(30), GpioPin(31)};
 
 // The LED matrix is driven as a 3 rows by 9 columns grid.
 // This table is a mapping of the 5x5 grid to the 3x9 grid.
@@ -386,115 +449,196 @@ const LedPins led_pin_map[25] = {
     {1, 5},  // 3, 4
     {2, 1},  // 4, 4
 };
-
-void
-print_row_col_bits(uint32_t gpio) {
-  for (int i = 0; i < 3; ++i) {
-    fprintf(stderr, "%c", (gpio & (1 << (13 + i))) ? '1' : '0');
-  }
-  fprintf(stderr, "  ");
-  for (int i = 0; i < 9; ++i) {
-    fprintf(stderr, "%c", (gpio & (1 << (4 + i))) ? '1' : '0');
-  }
-  fprintf(stderr, "\n");
+DisplayLed _display_leds[25] = {
+    DisplayLed(0),  DisplayLed(1),  DisplayLed(2),  DisplayLed(3),  DisplayLed(4),
+    DisplayLed(5),  DisplayLed(6),  DisplayLed(7),  DisplayLed(8),  DisplayLed(9),
+    DisplayLed(10), DisplayLed(11), DisplayLed(12), DisplayLed(13), DisplayLed(14),
+    DisplayLed(15), DisplayLed(16), DisplayLed(17), DisplayLed(18), DisplayLed(19),
+    DisplayLed(20), DisplayLed(21), DisplayLed(22), DisplayLed(23), DisplayLed(24),
+};
 }
 
+DisplayLed::DisplayLed(uint32_t n) : _n(n), _state(false), _b(0), _on_ticks(0), _duration_ticks(0) {
+}
+// Called whenever a LED pin changes state.
+void
+DisplayLed::update() {
+  bool on = is_on();
+  if (on == _state) {
+    return;
+  }
+  if (on) {
+    _on_ticks = get_ticks();
+  } else {
+    _duration_ticks += get_ticks() - _on_ticks;
+  }
+  _state = on;
+}
+// Called on the start of a new frame.
+void
+DisplayLed::calculate() {
+  _b = ticks();
+}
+uint32_t
+DisplayLed::ticks() {
+  uint32_t now = get_ticks();
+  if (_state) {
+    _duration_ticks += now - _on_ticks;
+    _on_ticks = now;
+  }
+  uint32_t t = _duration_ticks;
+  _duration_ticks = 0;
+  return t;
+}
 bool
-is_led_on(int led, uint32_t gpio_state) {
-  int row_pin = 13 + led_pin_map[led].r;
-  int col_pin = 4 + led_pin_map[led].c;
-  return (gpio_state & (1 << row_pin)) && !(gpio_state & (1 << col_pin));
+DisplayLed::is_on() {
+  int row_pin = 13 + led_pin_map[_n].r;
+  int col_pin = 4 + led_pin_map[_n].c;
+  return get_gpio_pin(row_pin).is_high() && !get_gpio_pin(col_pin).is_high();
 }
+uint32_t
+DisplayLed::brightness() {
+  return _b;
+}
+
+DisplayLed&
+get_display_led(uint32_t n) {
+  return _display_leds[n];
+}
+
+GpioPin::GpioPin(uint32_t pin)
+    : _pin(pin), _output(false), _is_output(false), _pull(PullDefault), _analog(NAN) {
 }
 
 void
-nrf_gpio_range_cfg_output(uint32_t pin_range_start, uint32_t pin_range_end) {
-  for (int i = pin_range_start; i < pin_range_end; ++i) {
-    set_gpio_pin_output(i);
+GpioPin::set_input_mode(PinMode pull) {
+  _is_output = false;
+  _pull = pull;
+}
+void
+GpioPin::set_output_mode() {
+  _is_output = true;
+  _pull = PullNone;
+}
+bool
+GpioPin::set_low() {
+  return set_digital(false);
+}
+bool
+GpioPin::set_high() {
+  return set_digital(true);
+}
+bool
+GpioPin::set_digital(bool d) {
+  if (!_is_output) {
+    return false;
   }
-}
-void
-nrf_gpio_pin_set(uint32_t pin_number) {
-  nrf_gpio_pins_set(1 << pin_number);
-}
-void
-nrf_gpio_pins_set(uint32_t pin_mask) {
-  if ((_gpio_output & pin_mask) != pin_mask) {
-    fprintf(stderr, "Setting non-output pin (output: %08x pins: %08x).\n", _gpio_output, pin_mask);
-    return;
+  if (_output == d) {
+    return true;
   }
-
-  set_gpio_state(get_gpio_state() | pin_mask);
-}
-void
-nrf_gpio_pin_clear(uint32_t pin_number) {
-  nrf_gpio_pins_clear(1 << pin_number);
-}
-void
-nrf_gpio_pins_clear(uint32_t pin_mask) {
-  if ((_gpio_output & pin_mask) != pin_mask) {
-    fprintf(stderr, "Clearing non-output pin (output: %08x pins: %08x).\n", _gpio_output, pin_mask);
-    return;
+  if (d) {
+    _on_ticks = get_ticks();
+  } else {
+    _duration_ticks += get_ticks() - _on_ticks;
   }
-
-  set_gpio_state(get_gpio_state() & ~pin_mask);
+  _output = d;
+  return true;
 }
-
-uint32_t get_gpio_state() {
-  return _gpio_state;
+uint32_t
+GpioPin::ticks() {
+  if (_is_output) {
+    return 0;
+  }
+  uint32_t now = get_ticks();
+  if (_output) {
+    _duration_ticks += now - _on_ticks;
+    _on_ticks = now;
+  }
+  uint32_t t = _duration_ticks;
+  _duration_ticks = 0;
+  return t;
 }
-
-void set_gpio_state(uint32_t state) {
-  //if ((new_state & LED_GPIO_MASK) != _last_gpio_led_state) {
-  if (state != _last_gpio_led_state) {
-    uint32_t now_ticks = get_ticks();
-    if (now_ticks > _last_gpio_led_ticks) {
-      uint32_t duration = now_ticks - _last_gpio_led_ticks;
-      for (int led = 0; led < 25; ++led) {
-	if (is_led_on(led, _last_gpio_led_state)) {
-	  _led_brightness[led] += duration;
-	}
+bool
+GpioPin::set_input_voltage(double a) {
+  if (_is_output) {
+    return false;
+  }
+  _analog = a;
+  return true;
+}
+double
+GpioPin::get_voltage() {
+  if (_is_output) {
+    return _output ? 3.3 : 0.0;
+  } else {
+    if (isnan(_analog)) {
+      switch (_pull) {
+        case PullNone:
+          return 1.57 + drand48() - 0.5;
+        case PullUp:
+          return 3.3;
+        case PullDown:
+          return 0.0;
       }
+    } else {
+      return _analog;
     }
-
-    _last_gpio_led_state = state;//(new_state & LED_GPIO_MASK);
-    _last_gpio_led_ticks = now_ticks;
-  }
-
-  _gpio_state = state;
-}
-
-void set_gpio_pin_input(uint32_t pin) {
-  _gpio_output &= ~(1 << pin);
-}
-
-void set_gpio_pin_output(uint32_t pin) {
-  _gpio_output |= (1 << pin);
-}
-
-void set_gpio_pin_pull_mode(uint32_t pin, PinMode mode) {
-  if (mode == PullDown) {
-    _gpio_float &= ~(1 << pin);
-    _gpio_pull &= ~(1 << pin);
-  } else if (mode == PullUp) {
-    _gpio_float &= ~(1 << pin);
-    _gpio_pull |= (1 << pin);
-  } else if (mode == PullNone) {
-    _gpio_float |= (1 << pin);
-    _gpio_pull &= ~(1 << pin);
   }
 }
-
-void get_gpio_info(uint32_t* state, uint32_t* output, uint32_t* pull, uint32_t* floating) {
-  *state = _gpio_state;
-  *output = _gpio_output;
-  *pull = _gpio_pull;
-  *floating = _gpio_float;
+GpioPinState
+GpioPin::get_state() {
+  if (_pin >= COL1 && _pin <= ROW3) {
+    return GPIO_PIN_RESERVED;
+  }
+  if (_is_output) {
+    return _output ? GPIO_PIN_OUTPUT_HIGH : GPIO_PIN_OUTPUT_LOW;
+  } else {
+    switch (_pull) {
+      case PullNone:
+        if (isnan(_analog)) {
+          return GPIO_PIN_INPUT_FLOATING;
+        } else {
+          return is_high() ? GPIO_PIN_INPUT_FLOATING_HIGH : GPIO_PIN_INPUT_FLOATING_LOW;
+        }
+      case PullUp:
+        return is_high() ? GPIO_PIN_INPUT_UP_HIGH : GPIO_PIN_INPUT_UP_LOW;
+      case PullDown:
+        return is_high() ? GPIO_PIN_INPUT_DOWN_HIGH : GPIO_PIN_INPUT_DOWN_LOW;
+    }
+  }
+}
+bool
+GpioPin::is_high() {
+  return get_voltage() > 2.0;
+}
+bool
+GpioPin::is_low() {
+  return get_voltage() < 1.0;
+}
+bool
+GpioPin::is_input() {
+  return !_is_output;
+}
+bool
+GpioPin::is_output() {
+  return _is_output;
+}
+bool
+GpioPin::is_floating() {
+  return _pull = PullNone;
+}
+bool
+GpioPin::is_pullup() {
+  return _pull = PullUp;
+}
+bool
+GpioPin::is_pulldown() {
+  return _pull = PullDown;
 }
 
-void get_led_ticks(uint32_t* leds) {
-  memcpy(leds, _led_brightness, sizeof(_led_brightness));
-  memset(_led_brightness, 0, sizeof(_led_brightness));
+GpioPin&
+get_gpio_pin(uint32_t pin) {
+  return _gpio_pins[pin];
 }
 
 namespace {
@@ -507,32 +651,36 @@ int32_t _magnet_y = 80000;
 int32_t _magnet_z = 0;
 }
 
-void set_accelerometer(int16_t x, int16_t y, int16_t z) {
+void
+set_accelerometer(int16_t x, int16_t y, int16_t z) {
   _accel_x = x;
   _accel_y = y;
   _accel_z = z;
-  set_gpio_state(get_gpio_state() & ~(1 << 28));
+  get_gpio_pin(ACCEL_INT1).set_input_voltage(0);
 }
 
-void get_accelerometer(int16_t* x, int16_t* y, int16_t* z) {
+void
+get_accelerometer(int16_t* x, int16_t* y, int16_t* z) {
   *x = _accel_x;
   *y = _accel_y;
   *z = _accel_z;
-  set_gpio_state(get_gpio_state() | (1 << 28));
+  get_gpio_pin(ACCEL_INT1).set_input_voltage(3.3);
 }
 
-void set_magnetometer(int32_t x, int32_t y, int32_t z) {
+void
+set_magnetometer(int32_t x, int32_t y, int32_t z) {
   _magnet_x = x;
   _magnet_y = y;
   _magnet_z = z;
-  set_gpio_state(get_gpio_state() & ~(1 << 29));
+  get_gpio_pin(MAG_INT1).set_input_voltage(0);
 }
 
-void get_magnetometer(int32_t* x, int32_t* y, int32_t* z) {
+void
+get_magnetometer(int32_t* x, int32_t* y, int32_t* z) {
   *x = _magnet_x;
   *y = _magnet_y;
   *z = _magnet_z;
-  set_gpio_state(get_gpio_state() | (1 << 29));
+  get_gpio_pin(MAG_INT1).set_input_voltage(3.3);
 }
 
 namespace {
@@ -540,18 +688,26 @@ volatile bool _reset_flag = false;
 volatile bool _panic_flag = false;
 }
 
-void set_reset_flag() {
+// Called by microbit.reset()
+void
+set_reset_flag() {
   _reset_flag = true;
 }
 
-bool get_reset_flag() {
+// Called by Main.cpp to initiate a reset.
+bool
+get_reset_flag() {
   return _reset_flag;
 }
 
-void set_panic_flag() {
+// Called by microbit.panic()
+void
+set_panic_flag() {
   _panic_flag = true;
 }
 
-bool get_panic_flag() {
+// Called by Main.cpp to initiate shutdown.
+bool
+get_panic_flag() {
   return _panic_flag;
 }

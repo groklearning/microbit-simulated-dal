@@ -1,3 +1,8 @@
+// Everything that we can't use the default implementation for goes here.
+// Where possible, copy the 'real' implementation's .cpp file directly to this directory.
+// This file should mostly forward all logic to Hardware.h.
+// For things that we need to no-op but not implement, see Unsupported.cpp.
+
 #include "MicroBit.h"
 #include "DynamicPwm.h"
 #include "ErrorNo.h"
@@ -442,28 +447,16 @@ MicroBitMultiButton::onButtonEvent(MicroBitEvent evt) {
 // MicroBitPin.h
 MicroBitPin::MicroBitPin(int id, PinName name, PinCapability capability) : capability(capability), name(name) {
 }
-void
-MicroBitPin::disconnect() {
-  fprintf(stderr, "Unsupported: %s\n", __FUNCTION__);
-}
-int
-MicroBitPin::obtainAnalogChannel() {
-  fprintf(stderr, "Unsupported: %s\n", __FUNCTION__);
-  return 0;
-}
 int
 MicroBitPin::setDigitalValue(int value) {
-  set_gpio_pin_output(name);
-  if (value) {
-    set_gpio_state(get_gpio_state() | (1 << name));
-  } else {
-    set_gpio_state(get_gpio_state() & ~(1 << name));
-  }
+  get_gpio_pin(name).set_output_mode();
+  get_gpio_pin(name).set_digital(value);
   return value;
 }
 int
 MicroBitPin::getDigitalValue() {
-  return !!(get_gpio_state() & (1 << name));
+  get_gpio_pin(name).set_input_mode(PullDown);
+  return get_gpio_pin(name).is_high();
 }
 int
 MicroBitPin::setAnalogValue(int value) {
@@ -477,28 +470,24 @@ MicroBitPin::setServoValue(int value, int range, int center) {
 }
 int
 MicroBitPin::getAnalogValue() {
-  fprintf(stderr, "Unsupported: %s\n", __FUNCTION__);
-  return 0;
+  get_gpio_pin(name).set_input_mode(PullNone);
+  return floor((get_gpio_pin(name).get_voltage() / 3.3) * 1023.9);
 }
 int
 MicroBitPin::isInput() {
-  fprintf(stderr, "Unsupported: %s\n", __FUNCTION__);
-  return 0;
+  return get_gpio_pin(name).is_input();
 }
 int
 MicroBitPin::isOutput() {
-  fprintf(stderr, "Unsupported: %s\n", __FUNCTION__);
-  return 0;
+  return get_gpio_pin(name).is_output();
 }
 int
 MicroBitPin::isDigital() {
-  fprintf(stderr, "Unsupported: %s\n", __FUNCTION__);
-  return 0;
+  return true;
 }
 int
 MicroBitPin::isAnalog() {
-  fprintf(stderr, "Unsupported: %s\n", __FUNCTION__);
-  return 0;
+  return false;
 }
 int
 MicroBitPin::isTouched() {
@@ -654,6 +643,9 @@ MicroBitIO::MicroBitIO(int ID_P0, int ID_P1, int ID_P2, int ID_P3, int ID_P4, in
 {
 }
 
+// These aren't heavily used, and only for global lifetime objects, so forwarding them
+// to system malloc isn't going to affect the realism of the simulation in any noticable
+// way.
 int
 microbit_heap_init() {
   return MICROBIT_OK;
