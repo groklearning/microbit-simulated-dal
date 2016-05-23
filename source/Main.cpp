@@ -12,6 +12,7 @@ extern "C" void app_main();
 #include <sys/epoll.h>
 #include <sys/inotify.h>
 #include <sys/timerfd.h>
+#include <sys/wait.h>
 #include <termios.h>
 #include <unistd.h>
 
@@ -33,7 +34,8 @@ namespace {
 pthread_cond_t interrupt_signal;
 pthread_mutex_t interrupt_lock;
 
-// Used to provide mutex for all state accessed by both the micropython VM and the main simulator thread.
+// Used to provide mutex for all state accessed by both the micropython VM and the main simulator
+// thread.
 pthread_mutex_t code_lock;
 
 // Set by the INT handler to cleanly shutdown the simulator.
@@ -117,17 +119,17 @@ code_thread(void*) {
       // Must be holding the lock while running the VM.
       pthread_mutex_lock(&code_lock);
       app_main();
-      
+
       // Normal termination (this should never happen - app_main doesn't return).
       return NULL;
     } else {
       // A longjmp happened.
       if (shutdown) {
-	// Ctrl-C or panic().
-	return NULL;
+        // Ctrl-C or panic().
+        return NULL;
       } else {
-	// Reset. (From within MicroPython, e.g. reset()).
-	continue;
+        // Reset. (From within MicroPython, e.g. reset()).
+        continue;
       }
     }
   }
@@ -140,10 +142,12 @@ const uint32_t MICROBIT_PIN_3V = INT_MAX;
 const uint32_t MICROBIT_PIN_GND = INT_MAX - 1;
 
 // Mapping of micro:bit pin number (0-20) to actual NRF pin number.
-uint32_t MICROBIT_PIN_MAP[23] = {MICROBIT_PIN_P0,  MICROBIT_PIN_P1,  MICROBIT_PIN_P2,  MICROBIT_PIN_P3,  MICROBIT_PIN_P4,  MICROBIT_PIN_P5,
-                                 MICROBIT_PIN_P6,  MICROBIT_PIN_P7,  MICROBIT_PIN_P8,  MICROBIT_PIN_P9,  MICROBIT_PIN_P10, MICROBIT_PIN_P11,
-                                 MICROBIT_PIN_P12, MICROBIT_PIN_P13, MICROBIT_PIN_P14, MICROBIT_PIN_P15, MICROBIT_PIN_P16, MICROBIT_PIN_3V,
-                                 MICROBIT_PIN_3V,  MICROBIT_PIN_P19, MICROBIT_PIN_P20, MICROBIT_PIN_GND, MICROBIT_PIN_GND};
+uint32_t MICROBIT_PIN_MAP[23] = {
+    MICROBIT_PIN_P0,  MICROBIT_PIN_P1,  MICROBIT_PIN_P2,  MICROBIT_PIN_P3,  MICROBIT_PIN_P4,
+    MICROBIT_PIN_P5,  MICROBIT_PIN_P6,  MICROBIT_PIN_P7,  MICROBIT_PIN_P8,  MICROBIT_PIN_P9,
+    MICROBIT_PIN_P10, MICROBIT_PIN_P11, MICROBIT_PIN_P12, MICROBIT_PIN_P13, MICROBIT_PIN_P14,
+    MICROBIT_PIN_P15, MICROBIT_PIN_P16, MICROBIT_PIN_3V,  MICROBIT_PIN_3V,  MICROBIT_PIN_P19,
+    MICROBIT_PIN_P20, MICROBIT_PIN_GND, MICROBIT_PIN_GND};
 
 // Generate json string from a list of uint32_t.
 // {1,2,3} --> '"<field>:" [1,2,3]'
@@ -167,7 +171,8 @@ list_to_json(const char* field, char** json_ptr, char* json_end, uint32_t* value
 }
 
 // Called periodically (currently every macro tick) to send GPIO pin state back to the client.
-// We're less strict about waiting for changes to stabilize (compared to the LED matrix) because we're not dealing with things like row/column scanning.
+// We're less strict about waiting for changes to stabilize (compared to the LED matrix) because
+// we're not dealing with things like row/column scanning.
 // There are 25 pins on the micro:bit, but we exclude the final two (3.3V and GND).
 // Pin states are in the GpioPinState enum in Hardware.h.
 // TODO(jim): Break this up into mode and value.
@@ -194,12 +199,12 @@ check_gpio_updates(int updates_fd) {
 
   pthread_mutex_unlock(&code_lock);
 
-
   if (memcmp(pins, prev_pins, sizeof(prev_pins)) != 0) {
     char json[1024];
     char* json_ptr = json;
     char* json_end = json + sizeof(json);
-    snprintf(json_ptr, json_end - json_ptr, "[{ \"type\": \"microbit_pins\", \"ticks\": %d, \"data\": {", get_macro_ticks());
+    snprintf(json_ptr, json_end - json_ptr,
+             "[{ \"type\": \"microbit_pins\", \"ticks\": %d, \"data\": {", get_macro_ticks());
     json_ptr += strnlen(json_ptr, json_end - json_ptr);
 
     list_to_json("p", &json_ptr, json_end, pins, sizeof(pins) / sizeof(uint32_t));
@@ -217,7 +222,7 @@ check_gpio_updates(int updates_fd) {
 // and our web UI.
 uint32_t
 ticks_to_brightness(int ticks) {
-  static uint32_t limits[] = {0,2,4,8,15,28,53,102,199,375};
+  static uint32_t limits[] = {0, 2, 4, 8, 15, 28, 53, 102, 199, 375};
   for (int i = 9; i >= 0; --i) {
     if (ticks >= limits[i]) {
       return i;
@@ -228,8 +233,11 @@ ticks_to_brightness(int ticks) {
 
 // Called periodically (currently every macro tick) to send LED matrix changes back
 // to the client.
-// Sometimes it takes a few frames to stabilize (i.e. if an image change occurs mid-frame), so we require at least 3 identical frames before sending to the client.
-// The DisplayLed class returns brightness() as a number of ticks that it was turned on for the last complete frame. This will be a maximum of 375 ticks (1/3 of the time) - with three rows, a frame takes 3 macro ticks (1125 ticks).
+// Sometimes it takes a few frames to stabilize (i.e. if an image change occurs mid-frame), so we
+// require at least 3 identical frames before sending to the client.
+// The DisplayLed class returns brightness() as a number of ticks that it was turned on for the last
+// complete frame. This will be a maximum of 375 ticks (1/3 of the time) - with three rows, a frame
+// takes 3 macro ticks (1125 ticks).
 void
 check_led_updates(int updates_fd) {
   uint32_t leds[25] = {0};
@@ -248,7 +256,7 @@ check_led_updates(int updates_fd) {
     ++count;
   } else {
     count = 0;
-    memcpy(leds1, leds, sizeof(leds)); 
+    memcpy(leds1, leds, sizeof(leds));
   }
 
   // If we see three, send it to the client.
@@ -256,7 +264,8 @@ check_led_updates(int updates_fd) {
     char json[1024];
     char* json_ptr = json;
     char* json_end = json + sizeof(json);
-    snprintf(json_ptr, json_end - json_ptr, "[{ \"type\": \"microbit_leds\", \"ticks\": %d, \"data\": {", get_macro_ticks());
+    snprintf(json_ptr, json_end - json_ptr,
+             "[{ \"type\": \"microbit_leds\", \"ticks\": %d, \"data\": {", get_macro_ticks());
     json_ptr += strnlen(json_ptr, json_end - json_ptr);
 
     list_to_json("b", &json_ptr, json_end, leds, sizeof(leds) / sizeof(uint32_t));
@@ -275,7 +284,8 @@ void
 process_client_button(const json_value* data) {
   const json_value* id = json_value_get(data, "id");
   const json_value* state = json_value_get(data, "state");
-  if (!id || !state || id->type != JSON_VALUE_TYPE_NUMBER || state->type != JSON_VALUE_TYPE_NUMBER) {
+  if (!id || !state || id->type != JSON_VALUE_TYPE_NUMBER ||
+      state->type != JSON_VALUE_TYPE_NUMBER) {
     fprintf(stderr, "Button event missing id and/or state\n");
     return;
   }
@@ -302,7 +312,8 @@ process_client_accel(const json_value* data) {
   const json_value* x = json_value_get(data, "x");
   const json_value* y = json_value_get(data, "y");
   const json_value* z = json_value_get(data, "z");
-  if (!x || !y || !z || x->type != JSON_VALUE_TYPE_NUMBER || y->type != JSON_VALUE_TYPE_NUMBER || z->type != JSON_VALUE_TYPE_NUMBER) {
+  if (!x || !y || !z || x->type != JSON_VALUE_TYPE_NUMBER || y->type != JSON_VALUE_TYPE_NUMBER ||
+      z->type != JSON_VALUE_TYPE_NUMBER) {
     fprintf(stderr, "Accelerometer event missing x/y/z.\n");
     return;
   }
@@ -320,7 +331,8 @@ process_client_magnet(const json_value* data) {
   const json_value* x = json_value_get(data, "x");
   const json_value* y = json_value_get(data, "y");
   const json_value* z = json_value_get(data, "z");
-  if (!x || !y || !z || x->type != JSON_VALUE_TYPE_NUMBER || y->type != JSON_VALUE_TYPE_NUMBER || z->type != JSON_VALUE_TYPE_NUMBER) {
+  if (!x || !y || !z || x->type != JSON_VALUE_TYPE_NUMBER || y->type != JSON_VALUE_TYPE_NUMBER ||
+      z->type != JSON_VALUE_TYPE_NUMBER) {
     fprintf(stderr, "Magnetometer event missing x/y/z.\n");
     return;
   }
@@ -340,7 +352,7 @@ process_client_pins(const json_value* data) {
     fprintf(stderr, "Pin analog values missing.\n");
     return;
   }
-  
+
   pthread_mutex_lock(&code_lock);
 
   int i = 0;
@@ -353,7 +365,7 @@ process_client_pins(const json_value* data) {
     pin = pin->next;
     ++i;
   }
-  
+
   pthread_mutex_unlock(&code_lock);
 }
 
@@ -373,20 +385,21 @@ process_client_json(const json_value* json) {
     }
     const json_value* event_type = json_value_get(event->value, "type");
     const json_value* event_data = json_value_get(event->value, "data");
-    if (!event_type || !event_data || event_type->type != JSON_VALUE_TYPE_STRING || event_data->type != JSON_VALUE_TYPE_OBJECT) {
+    if (!event_type || !event_data || event_type->type != JSON_VALUE_TYPE_STRING ||
+        event_data->type != JSON_VALUE_TYPE_OBJECT) {
       fprintf(stderr, "Event missing type and/or data.\n");
     } else {
       if (strncmp(event_type->as.string, "microbit_button", 15) == 0) {
-	// Button state change.
+        // Button state change.
         process_client_button(event_data);
       } else if (strncmp(event_type->as.string, "microbit_accel", 14) == 0) {
-	// Accelerometer values change.
+        // Accelerometer values change.
         process_client_accel(event_data);
       } else if (strncmp(event_type->as.string, "microbit_magnet", 15) == 0) {
-	// Compass values change.
+        // Compass values change.
         process_client_magnet(event_data);
       } else if (strncmp(event_type->as.string, "microbit_pins", 13) == 0) {
-	// Something driving the GPIO pins.
+        // Something driving the GPIO pins.
         process_client_pins(event_data);
       } else {
         fprintf(stderr, "Unknown event type: %s\n", event_type->as.string);
@@ -436,7 +449,8 @@ process_client_event(int fd) {
 //  - Reading serial data from STDIN
 //  - Generating timer events.
 // We can't epoll a file (so we inotify), but we can't inotify a file on a FUSE filesystem.
-// So we provide the client events in the pipe as a backup. The Grok terminal uses the pipe, but the file is useful for local testing. See utils/*.sh for scripts to generate events.
+// So we provide the client events in the pipe as a backup. The Grok terminal uses the pipe, but the
+// file is useful for local testing. See utils/*.sh for scripts to generate events.
 void*
 main_thread(void*) {
   const int MAX_EVENTS = 10;
@@ -593,8 +607,7 @@ unbuffered_terminal(bool enable) {
 void
 handle_sigint(int sig) {
   if (shutdown) {
-    // Second time, something has gone wrong, so do minimal cleanup and exit.
-    unbuffered_terminal(false);
+    // Second time, something has gone wrong waiting, so do minimal cleanup and exit.
     exit(1);
   } else {
     // Attempt a clean shutdown.
@@ -604,28 +617,10 @@ handle_sigint(int sig) {
   }
 }
 
-}  // namespace
-
-// Copy of the definition of the _appended_script_t struct in mprun.c.
-// In a real microbit-micropython firmware, one of these is expected to
-// be found this at 0x3e000.
-// We instead leave it as an extern and provide one below.
-extern "C" {
-typedef uint8_t byte;
-typedef struct _appended_script_t {
-  byte header[2];  // should be "MP"
-  uint16_t len;    // length of script stored little endian
-  char str[];      // data of script
-} appended_script_t;
-
-// Our modification to mprun.c expects to find one of these.
-struct _appended_script_t* initial_script;
-}
+const int SIMULATOR_RESET = 99;
 
 int
-main(int argc, char** argv) {
-  unbuffered_terminal(true);
-
+run_simulator() {
   // Emulate the pull-ups on the button pins.
   // Note: MicroBitButton floats the pin on creation, but MicroBitPin doesn't
   // change the mode until the first read() (to PullDown).
@@ -634,25 +629,6 @@ main(int argc, char** argv) {
   // TODO(jim): Send patch.
   get_gpio_pin(BUTTON_A).set_input_voltage(3.3);
   get_gpio_pin(BUTTON_B).set_input_voltage(3.3);
-
-  // Load the program from the command line args, defaulting to microbit import
-  // if nothing specified.
-  char script[102400] = "from microbit import *\n";
-  if (argc > 1 && argv[1] != NULL && strlen(argv[1]) > 0) {
-    int program_fd = open("program.py", O_RDONLY);
-    if (program_fd != -1) {
-      ssize_t len = read(program_fd, script, sizeof(script));
-      script[len] = 0;
-    }
-    close(program_fd);
-  }
-
-  // Create the "appended_script_t" struct that mprun.c expects.
-  initial_script = static_cast<_appended_script_t*>(malloc(sizeof(initial_script) + strlen(script) + 2));
-  initial_script->header[0] = 'M';
-  initial_script->header[1] = 'P';
-  initial_script->len = strlen(script);
-  strcpy(initial_script->str, script);
 
   // Install an INT handler so that we can make Ctrl-C clean up nicely.
   struct sigaction sa;
@@ -690,15 +666,90 @@ main(int argc, char** argv) {
   pthread_cond_destroy(&interrupt_signal);
   pthread_mutex_destroy(&interrupt_lock);
   pthread_mutex_destroy(&code_lock);
+
+  // If the reset flag is set, ask the parent loop to re-run.
+  return get_reset_flag() ? SIMULATOR_RESET : 0;
+}
+
+}  // namespace
+
+// Copy of the definition of the _appended_script_t struct in mprun.c.
+// In a real microbit-micropython firmware, one of these is expected to
+// be found this at 0x3e000.
+// We instead leave it as an extern and provide one below.
+extern "C" {
+typedef uint8_t byte;
+typedef struct _appended_script_t {
+  byte header[2];  // should be "MP"
+  uint16_t len;    // length of script stored little endian
+  char str[];      // data of script
+} appended_script_t;
+
+// Our modification to mprun.c expects to find one of these.
+struct _appended_script_t* initial_script;
+}
+
+void foo(int) {}
+
+int
+main(int argc, char** argv) {
+  unbuffered_terminal(true);
+
+  // Ignore the INT handler so that it's handled by the child.
+  struct sigaction sa;
+  sa.sa_handler = SIG_IGN;
+  sigemptyset(&sa.sa_mask);
+  sa.sa_flags = 0;
+  sigaction(SIGINT, &sa, NULL);
+
+  // Load the program from the command line args, defaulting to microbit import
+  // if nothing specified.
+  char script[102400] = "from microbit import *\n";
+  if (argc > 1 && argv[1] != NULL && strlen(argv[1]) > 0) {
+    int program_fd = open(argv[1], O_RDONLY);
+    if (program_fd != -1) {
+      ssize_t len = read(program_fd, script, sizeof(script));
+      script[len] = 0;
+    }
+    close(program_fd);
+  }
+
+  // Create the "appended_script_t" struct that mprun.c expects.
+  initial_script =
+      static_cast<_appended_script_t*>(malloc(sizeof(initial_script) + strlen(script) + 2));
+  initial_script->header[0] = 'M';
+  initial_script->header[1] = 'P';
+  initial_script->len = strlen(script);
+  strcpy(initial_script->str, script);
+
+  int status = 0;
+
+  // Micropython provides a 'reset()' method that restarts the simulation.
+  // Easiest way to do that is to fork() the simulation and just start a new one when it
+  // signals that it wants to restart.
+  while (true) {
+    pid_t pid = fork();
+    if (pid == -1) {
+      // Error.
+      break;
+    } else if (pid == 0) {
+      // Child. Return directly from main().
+      return run_simulator();
+    } else {
+      // Parent. Block until the child exits.
+      int wstatus = 0;
+      waitpid(pid, &wstatus, 0);
+      status = WEXITSTATUS(wstatus);
+      if (status != SIMULATOR_RESET) {
+        break;
+      }
+    }
+  }
+
   free(initial_script);
 
   // Reset the terminal.
   unbuffered_terminal(false);
 
-  // If the reset flag is set, signal to the driver that we want to be re-run.
-  if (get_reset_flag()) {
-    return 99;
-  } else {
-    return 0;
-  }
+  return status;
 }
