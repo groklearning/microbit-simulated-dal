@@ -1,0 +1,3 @@
+[submodule "microbit-dal"]
+	path = microbit-dal
+	url = git@github.com:lancaster-university/microbit-dal.git
