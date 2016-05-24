@@ -1,10 +1,17 @@
 #ifndef __HARDWARE_H
 #define __HARDWARE_H
 
+#include <stddef.h>
+
 // This file is the interface between the mock implementation of the micro:bit DAL
 // and the event loop in Main.cpp.
 
 #include "PinNames.h"
+
+const size_t FLASH_ROM_SIZE = 200*1024;
+const size_t MAX_SCRIPT_SIZE = 100*1024;
+
+extern uint8_t* flash_rom;
 
 void serial_add_byte(uint8_t c);
 
@@ -89,5 +96,7 @@ uint32_t get_macro_ticks();
 
 // Returns how many ticks (16us) until it should next be called.
 uint32_t fire_ticker(uint32_t ticks);
+
+void nvmc_tick();
 
 #endif

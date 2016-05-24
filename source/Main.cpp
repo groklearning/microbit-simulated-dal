@@ -673,6 +673,8 @@ run_simulator() {
 
 }  // namespace
 
+uint8_t* flash_rom;
+
 // Copy of the definition of the _appended_script_t struct in mprun.c.
 // In a real microbit-micropython firmware, one of these is expected to
 // be found this at 0x3e000.
@@ -686,10 +688,14 @@ typedef struct _appended_script_t {
 } appended_script_t;
 
 // Our modification to mprun.c expects to find one of these.
-struct _appended_script_t* initial_script;
+char* initial_script;
 }
 
-void foo(int) {}
+uint32_t __data_end__ = 0;
+uint32_t __data_start__ = 0;
+uint32_t __etext = 0;
+
+const bool ALLOW_FORK_FOR_RESET = false;
 
 int
 main(int argc, char** argv) {
@@ -704,7 +710,7 @@ main(int argc, char** argv) {
 
   // Load the program from the command line args, defaulting to microbit import
   // if nothing specified.
-  char script[102400] = "from microbit import *\n";
+  char script[MAX_SCRIPT_SIZE] = "from microbit import *\n";
   if (argc > 1 && argv[1] != NULL && strlen(argv[1]) > 0) {
     int program_fd = open(argv[1], O_RDONLY);
     if (program_fd != -1) {
@@ -714,39 +720,49 @@ main(int argc, char** argv) {
     close(program_fd);
   }
 
+  flash_rom = static_cast<uint8_t*>(malloc(FLASH_ROM_SIZE));
+  memset(flash_rom, 0, FLASH_ROM_SIZE);
+
+  __etext = reinterpret_cast<uint32_t>(flash_rom);
+
   // Create the "appended_script_t" struct that mprun.c expects.
-  initial_script =
-      static_cast<_appended_script_t*>(malloc(sizeof(initial_script) + strlen(script) + 2));
-  initial_script->header[0] = 'M';
-  initial_script->header[1] = 'P';
-  initial_script->len = strlen(script);
-  strcpy(initial_script->str, script);
+  struct _appended_script_t* initial_script_struct =
+      reinterpret_cast<_appended_script_t*>(flash_rom + FLASH_ROM_SIZE - MAX_SCRIPT_SIZE);
+  initial_script_struct->header[0] = 'M';
+  initial_script_struct->header[1] = 'P';
+  initial_script_struct->len = strlen(script);
+  strcpy(initial_script_struct->str, script);
+  initial_script = reinterpret_cast<char*>(initial_script_struct);
 
   int status = 0;
 
-  // Micropython provides a 'reset()' method that restarts the simulation.
-  // Easiest way to do that is to fork() the simulation and just start a new one when it
-  // signals that it wants to restart.
-  while (true) {
-    pid_t pid = fork();
-    if (pid == -1) {
-      // Error.
-      break;
-    } else if (pid == 0) {
-      // Child. Return directly from main().
-      return run_simulator();
-    } else {
-      // Parent. Block until the child exits.
-      int wstatus = 0;
-      waitpid(pid, &wstatus, 0);
-      status = WEXITSTATUS(wstatus);
-      if (status != SIMULATOR_RESET) {
+  if (ALLOW_FORK_FOR_RESET) {
+    // Micropython provides a 'reset()' method that restarts the simulation.
+    // Easiest way to do that is to fork() the simulation and just start a new one when it
+    // signals that it wants to restart.
+    while (true) {
+      pid_t pid = fork();
+      if (pid == -1) {
+        // Error.
         break;
+      } else if (pid == 0) {
+        // Child. Return directly from main().
+        return run_simulator();
+      } else {
+        // Parent. Block until the child exits.
+        int wstatus = 0;
+        waitpid(pid, &wstatus, 0);
+        status = WEXITSTATUS(wstatus);
+        if (status != SIMULATOR_RESET) {
+          break;
+        }
       }
     }
+  } else {
+    run_simulator();
   }
 
-  free(initial_script);
+  free(flash_rom);
 
   // Reset the terminal.
   unbuffered_terminal(false);

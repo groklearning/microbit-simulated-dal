@@ -14,6 +14,10 @@
 #include "serial_api.h"
 #include "spi_api.h"
 
+extern "C" {
+#include "nrf_nvmc.h"
+}
+
 #include "Hardware.h"
 
 namespace {
@@ -337,7 +341,12 @@ PwmOut::pulsewidth_us(int us) {
 }
 }
 
+extern "C" {
 // More mbed/nrf stuff used by microbit-micropython directly.
+void nrf_gpio_cfg_output(uint8_t pin_number) {
+  get_gpio_pin(pin_number).set_output_mode();
+}
+
 void
 nrf_gpio_range_cfg_output(uint32_t pin_range_start, uint32_t pin_range_end) {
   for (int i = pin_range_start; i < pin_range_end; ++i) {
@@ -346,7 +355,7 @@ nrf_gpio_range_cfg_output(uint32_t pin_range_start, uint32_t pin_range_end) {
 }
 
 void
-nrf_gpio_pin_set(uint32_t pin_number) {
+nrf_gpio_pin_set(uint8_t pin_number) {
   nrf_gpio_pins_set(1 << pin_number);
 }
 
@@ -365,7 +374,7 @@ nrf_gpio_pins_set(uint32_t pin_mask) {
 }
 
 void
-nrf_gpio_pin_clear(uint32_t pin_number) {
+nrf_gpio_pin_clear(uint8_t pin_number) {
   nrf_gpio_pins_clear(1 << pin_number);
 
   // Detect the start of a new row.
@@ -401,6 +410,33 @@ nrf_gpio_pins_clear(uint32_t pin_mask) {
   for (int i = 0; i < 25; ++i) {
     get_display_led(i).update();
   }
+}
+}
+
+extern "C" {
+NRF_FICR_t _NRF_FICR = { 4096 };
+NRF_RNG_t _NRF_RNG;
+NRF_NVMC_t _NRF_NVMC = { 0 };
+
+void nrf_nvmc_write_byte(uint32_t addr, uint8_t b) {
+  *reinterpret_cast<uint8_t*>(addr) = b;
+}
+void nrf_nvmc_write_words(uint32_t addr, const uint32_t* d, size_t len) {
+  uint32_t* mem = reinterpret_cast<uint32_t*>(addr);
+  for (size_t i = 0; i < len; ++i) {
+    *mem++ = *d++;
+  }
+}
+void nrf_nvmc_write_bytes(uint32_t addr, const uint8_t* d, size_t len) {
+  uint8_t* mem = reinterpret_cast<uint8_t*>(addr);
+  for (size_t i = 0; i < len; ++i) {
+    *mem++ = *d++;
+  }
+}
+void nrf_nvmc_page_erase(uint32_t addr) {
+  void* mem = reinterpret_cast<void*>(addr);
+  memset(mem, 0xff, 4096);
+}
 }
 
 // Hardware.h
