@@ -12,10 +12,7 @@
   },
   "extraIncludes": [
     "inc",
-    "inc/gpio",
-    "inc/mbed_api",
-    "inc/ble",
-    "inc/nrf",
+    "inc/mbed",
     "inc/json"
   ]
 }
