@@ -695,7 +695,7 @@ uint32_t __data_end__ = 0;
 uint32_t __data_start__ = 0;
 uint32_t __etext = 0;
 
-const bool ALLOW_FORK_FOR_RESET = false;
+const bool ALLOW_FORK_FOR_RESET = true;
 
 int
 main(int argc, char** argv) {
