@@ -447,6 +447,29 @@ process_client_event(int fd) {
   }
 }
 
+// Called when the timerfd fires.
+// Fires the hardware timer and periodically updates LED & GPIO state.
+// Takes the number of ticks since the last call, and returns the number of ticks
+// until the next call.
+uint32_t
+handle_timerfd_event(uint32_t ticks, int updates_fd) {
+  static uint32_t macroticks_last_led_update = 0;
+
+  pthread_mutex_lock(&code_lock);
+  ticks = fire_ticker(ticks);
+  pthread_mutex_unlock(&code_lock);
+  
+  signal_interrupt();
+  
+  if (get_macro_ticks() != macroticks_last_led_update) {
+    check_led_updates(updates_fd);
+    check_gpio_updates(updates_fd);
+    macroticks_last_led_update = get_macro_ticks();
+  }
+
+  return ticks;
+}
+
 // Main thread - does everything except for running the micropython VM.
 // The epoll loop is responsible for:
 //  - Reading client events from both
@@ -515,7 +538,6 @@ main_thread(void*) {
   }
 
   uint32_t ticks_until_fire_timer = 75;
-  uint32_t macroticks_last_led_update = 0;
 
   while (!shutdown) {
     struct epoll_event events[MAX_EVENTS];
@@ -560,17 +582,7 @@ main_thread(void*) {
         uint64_t t;
         read(timer_fd, &t, sizeof(uint64_t));
 
-        pthread_mutex_lock(&code_lock);
-        ticks_until_fire_timer = fire_ticker(ticks_until_fire_timer);
-        pthread_mutex_unlock(&code_lock);
-
-        signal_interrupt();
-
-        if (get_macro_ticks() != macroticks_last_led_update) {
-          check_led_updates(updates_fd);
-          check_gpio_updates(updates_fd);
-          macroticks_last_led_update = get_macro_ticks();
-        }
+	ticks_until_fire_timer = handle_timerfd_event(ticks_until_fire_timer, updates_fd);
 
         timer_spec.it_value.tv_nsec = 16000 * ticks_until_fire_timer;
         timerfd_settime(timer_fd, 0, &timer_spec, NULL);
@@ -578,6 +590,13 @@ main_thread(void*) {
         process_client_event(client_pipe_fd);
       }
     }
+  }
+
+  // Keep running the timer for 20 more macro ticks (simulates ~120ms of time passing) so
+  // that any pending LED and GPIO updates get sent out.
+  uint32_t shutdown_ticks = get_macro_ticks();
+  while (get_macro_ticks() < shutdown_ticks + 20) {
+    ticks_until_fire_timer = handle_timerfd_event(ticks_until_fire_timer, updates_fd);
   }
 
   signal_interrupt();
