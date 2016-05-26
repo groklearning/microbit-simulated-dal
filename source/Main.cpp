@@ -34,14 +34,17 @@ namespace {
 pthread_cond_t interrupt_signal;
 pthread_mutex_t interrupt_lock;
 
-// Used to provide mutex for all state accessed by both the micropython VM and the main simulator
-// thread.
+// Used to provide mutex for all state accessed by both the micropython VM and the main
+// simulator thread.
 pthread_mutex_t code_lock;
 
-// Set by the INT handler to cleanly shutdown the simulator.
+// Set to cleanly shutdown the simulator.
 volatile bool shutdown = false;
 
 jmp_buf code_quit_jmp;
+
+bool interactive = true;
+bool sent_ctrl_d = false;
 }
 
 extern "C" {
@@ -52,11 +55,8 @@ void
 simulated_dal_micropy_vm_hook_loop() {
   pthread_mutex_unlock(&code_lock);
 
-  if (get_reset_flag() || get_panic_flag()) {
+  if (shutdown || get_reset_flag() || get_panic_flag() || get_disconnect_flag()) {
     shutdown = true;
-  }
-
-  if (shutdown) {
     longjmp(code_quit_jmp, 1);
   }
 
@@ -73,15 +73,21 @@ void
 __wait_for_interrupt() {
   pthread_mutex_unlock(&code_lock);
 
+  // Every time micro:bit tries to read from serial it calls __WFI first.
+  // So if we're non-interactive (i.e. Run button or inline snippet) then
+  // trigger micro:bit's soft reboot by sending ctrl-d. We'll detect
+  // the reboot (in MicroBitDisplay, which sets the disconnect flag).
+  if (!interactive && !sent_ctrl_d) {
+    serial_add_byte(0x04);
+    sent_ctrl_d = true;
+  }
+  
   pthread_mutex_lock(&interrupt_lock);
   pthread_cond_wait(&interrupt_signal, &interrupt_lock);
   pthread_mutex_unlock(&interrupt_lock);
 
-  if (get_reset_flag() || get_panic_flag()) {
+  if (shutdown || get_reset_flag() || get_panic_flag() || get_disconnect_flag()) {
     shutdown = true;
-  }
-
-  if (shutdown) {
     longjmp(code_quit_jmp, 1);
   }
 
@@ -532,7 +538,7 @@ main_thread(void*) {
         }
         pthread_mutex_lock(&code_lock);
         for (ssize_t i = 0; i < len; ++i) {
-          serial_add_byte(buf[i]);
+	  serial_add_byte(buf[i]);
         }
         pthread_mutex_unlock(&code_lock);
         signal_interrupt();
@@ -610,10 +616,11 @@ handle_sigint(int sig) {
     // Second time, something has gone wrong waiting, so do minimal cleanup and exit.
     exit(1);
   } else {
-    // Attempt a clean shutdown.
-    // This will stop the code_thread on the next instruction or __WFI().
-    shutdown = true;
-    // The main thread will get EINTR back from epoll_wait.
+    // Send Ctrl-C to the micro:bit (which will abort a currently running script).
+    pthread_mutex_lock(&code_lock);
+    serial_add_byte(0x03);
+    pthread_mutex_unlock(&code_lock);
+    signal_interrupt();
   }
 }
 
@@ -711,13 +718,24 @@ main(int argc, char** argv) {
   // Load the program from the command line args, defaulting to microbit import
   // if nothing specified.
   char script[MAX_SCRIPT_SIZE] = "from microbit import *\n";
-  if (argc > 1 && argv[1] != NULL && strlen(argv[1]) > 0) {
-    int program_fd = open(argv[1], O_RDONLY);
-    if (program_fd != -1) {
-      ssize_t len = read(program_fd, script, sizeof(script));
-      script[len] = 0;
+  bool interactive_override = false;
+
+  for (int i = 1; i < argc; ++i) {
+    if (strlen(argv[i]) > 0) {
+      if (argv[i][0] == '-') {
+	if (argv[i][1] == 'i') {
+	  interactive_override = true;
+	}
+      } else {
+	int program_fd = open(argv[i], O_RDONLY);
+	if (program_fd != -1) {
+	  ssize_t len = read(program_fd, script, sizeof(script));
+	  script[len] = 0;
+	  interactive = interactive_override;
+	}
+	close(program_fd);
+      }
     }
-    close(program_fd);
   }
 
   flash_rom = static_cast<uint8_t*>(malloc(FLASH_ROM_SIZE));

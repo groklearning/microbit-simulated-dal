@@ -722,6 +722,7 @@ get_magnetometer(int32_t* x, int32_t* y, int32_t* z) {
 namespace {
 volatile bool _reset_flag = false;
 volatile bool _panic_flag = false;
+volatile bool _disconnect_flag = false;
 }
 
 // Called by microbit.reset()
@@ -746,4 +747,15 @@ set_panic_flag() {
 bool
 get_panic_flag() {
   return _panic_flag;
+}
+
+// Called by MicroBitDisplay::disable on the first reboot.
+void
+set_disconnect_flag() {
+  _disconnect_flag = true;
+}
+
+bool
+get_disconnect_flag() {
+  return _disconnect_flag;
 }

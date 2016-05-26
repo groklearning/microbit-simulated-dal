@@ -226,8 +226,3 @@ MicroBitDisplay::systemTick() {
 void
 MicroBitDisplay::enable() {
 }
-void
-MicroBitDisplay::disable() {
-  // The micro:bit code has its own display handling.
-  // In microbit_init, it disables the DAL's imlementation.
-}

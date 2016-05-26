@@ -91,6 +91,9 @@ bool get_reset_flag();
 void set_panic_flag();
 bool get_panic_flag();
 
+void set_disconnect_flag();
+bool get_disconnect_flag();
+
 uint32_t get_ticks();
 uint32_t get_macro_ticks();
 

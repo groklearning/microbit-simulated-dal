@@ -69,7 +69,6 @@ class MicroBit
     private:
 
     void                    compassCalibrator(MicroBitEvent e);
-    void                    onABListenerRegisteredEvent(MicroBitEvent evt);
     uint32_t                randomValue;
 
     //the current tick period in MS
