@@ -43,8 +43,25 @@ volatile bool shutdown = false;
 
 jmp_buf code_quit_jmp;
 
+// In interactive mode, we let the default behavior happen (microbit-micropython runs the
+// main script then goes into the REPL). In non-interactive mode, we send a Ctrl-D which
+// will be handled when the REPL first starts, terminating it immediately.
 bool interactive = true;
-bool sent_ctrl_d = false;
+volatile bool sent_ctrl_d = false;
+
+// Rather than putting complicated locking in the signal handler, just flag that it happened
+// and on the next timer tick we'll do the right thing.
+volatile bool sigint_requested = false;
+
+// Our SIGINT handler sends a Ctrl-C to the serial input. This has the following effect:
+// - In the REPL, it clears the current line, and starts a new prompt.
+// - If Python code is executing, it stops it and returns to the REPL.
+// However, if there's an uncaught exception, microbit-micropython scrolls the message
+// on the display. Which is slow and hard to read, and also it doesn't see the Ctrl-C.
+// So if it's been more than 20 ticks since we attempted to deliver a Ctrl-C and the
+// VM hasn't executed any instructions, then we shutdown.
+// Same goes for Ctrl-D.
+uint32_t signal_pending_since = 0;
 }
 
 extern "C" {
@@ -54,6 +71,10 @@ extern "C" {
 void
 simulated_dal_micropy_vm_hook_loop() {
   pthread_mutex_unlock(&code_lock);
+
+  // Code has executed since the a Ctrl-C was delivered (if any) so this means the VM is
+  // processing instructions and if there was a Ctrl-C it would have been handled.
+  signal_pending_since = 0;
 
   if (shutdown || get_reset_flag() || get_panic_flag() || get_disconnect_flag()) {
     shutdown = true;
@@ -470,6 +491,18 @@ handle_timerfd_event(uint32_t ticks, int updates_fd) {
   return ticks;
 }
 
+// Run the timer with no real sleeps, just simulating the timer events.
+// This is used to flush out any LED updates on shutdown, and to fastforward past
+// native code that is blocking a Ctrl-C being handled.
+void
+fastforward_timer(uint32_t ticks, int updates_fd) {
+  uint32_t start_ticks = get_macro_ticks();
+  uint32_t ticks_until_fire_timer = 75;
+  while (get_macro_ticks() < start_ticks + ticks) {
+    ticks_until_fire_timer = handle_timerfd_event(ticks_until_fire_timer, updates_fd);
+  }
+}
+
 // Main thread - does everything except for running the micropython VM.
 // The epoll loop is responsible for:
 //  - Reading client events from both
@@ -537,6 +570,7 @@ main_thread(void*) {
     epoll_ctl(epoll_fd, EPOLL_CTL_ADD, client_pipe_fd, &ev_client_pipe);
   }
 
+  // How long until we next need the timer callback to fire (in ticks).
   uint32_t ticks_until_fire_timer = 75;
 
   while (!shutdown) {
@@ -553,6 +587,7 @@ main_thread(void*) {
 
     for (int n = 0; n < nfds; ++n) {
       if (events[n].data.fd == STDIN_FILENO) {
+	// Input from stdin.
         uint8_t buf[10240];
         ssize_t len = read(STDIN_FILENO, &buf, sizeof(buf));
         if (len == -1) {
@@ -560,11 +595,16 @@ main_thread(void*) {
         }
         pthread_mutex_lock(&code_lock);
         for (ssize_t i = 0; i < len; ++i) {
+	  if (buf[i] == 0x04) {
+	    // Make sure that the Ctrl-D gets handled by something.
+	    signal_pending_since = get_macro_ticks();
+	  }
 	  serial_add_byte(buf[i]);
         }
         pthread_mutex_unlock(&code_lock);
         signal_interrupt();
       } else if (events[n].data.fd == notify_fd) {
+	// A change occured to the ___client_events file.
         uint8_t buf[4096] __attribute__((aligned(__alignof__(inotify_event))));
         ssize_t len = read(notify_fd, buf, sizeof(buf));
         if (len == -1) {
@@ -579,14 +619,41 @@ main_thread(void*) {
           }
         }
       } else if (events[n].data.fd == timer_fd) {
+	// Timer callback.
         uint64_t t;
         read(timer_fd, &t, sizeof(uint64_t));
 
 	ticks_until_fire_timer = handle_timerfd_event(ticks_until_fire_timer, updates_fd);
 
+	// See if our SIGINT handler has been called.
+	if (sigint_requested) {
+	  sigint_requested = false;
+
+	  // Deliver a Ctrl-C to the serial input.
+	  pthread_mutex_lock(&code_lock);
+	  serial_add_byte(0x03);
+	  pthread_mutex_unlock(&code_lock);
+
+	  // Make sure microbit-micropython does something with it.
+	  signal_pending_since = get_macro_ticks();
+
+	  // Let any code blocking on interrupts know there's serial data available.
+	  signal_interrupt();
+	}
+
+	// Check how long it's been since we delivered a Ctrl-C or Ctrl-D.
+	if (signal_pending_since > 0 && signal_pending_since + 20 < get_macro_ticks()) {
+	  // We attempted to deliver a Ctrl-C or Ctrl-D but code hasn't executed in the past
+	  // 20 macro ticks, so it's probably stuck in the unhandled exception marquee display.
+	  signal_pending_since = 0;
+	  fastforward_timer(10000, updates_fd);
+	}
+
+	// Reset the timer_fd.
         timer_spec.it_value.tv_nsec = 16000 * ticks_until_fire_timer;
         timerfd_settime(timer_fd, 0, &timer_spec, NULL);
       } else if (events[n].data.fd == client_pipe_fd) {
+	// A write happened to the client events pipe.
         process_client_event(client_pipe_fd);
       }
     }
@@ -594,10 +661,7 @@ main_thread(void*) {
 
   // Keep running the timer for 20 more macro ticks (simulates ~120ms of time passing) so
   // that any pending LED and GPIO updates get sent out.
-  uint32_t shutdown_ticks = get_macro_ticks();
-  while (get_macro_ticks() < shutdown_ticks + 20) {
-    ticks_until_fire_timer = handle_timerfd_event(ticks_until_fire_timer, updates_fd);
-  }
+  fastforward_timer(20, updates_fd);
 
   signal_interrupt();
 
@@ -631,16 +695,7 @@ unbuffered_terminal(bool enable) {
 // the terminal.
 void
 handle_sigint(int sig) {
-  if (shutdown) {
-    // Second time, something has gone wrong waiting, so do minimal cleanup and exit.
-    exit(1);
-  } else {
-    // Send Ctrl-C to the micro:bit (which will abort a currently running script).
-    pthread_mutex_lock(&code_lock);
-    serial_add_byte(0x03);
-    pthread_mutex_unlock(&code_lock);
-    signal_interrupt();
-  }
+  sigint_requested = true;
 }
 
 const int SIMULATOR_RESET = 99;
