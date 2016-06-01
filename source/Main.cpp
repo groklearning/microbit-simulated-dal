@@ -102,7 +102,7 @@ __wait_for_interrupt() {
     serial_add_byte(0x04);
     sent_ctrl_d = true;
   }
-  
+
   pthread_mutex_lock(&interrupt_lock);
   pthread_cond_wait(&interrupt_signal, &interrupt_lock);
   pthread_mutex_unlock(&interrupt_lock);
@@ -304,6 +304,19 @@ check_led_updates(int updates_fd) {
   }
 }
 
+void
+write_heartbeat(int updates_fd) {
+  char json[1024];
+  char* json_ptr = json;
+  char* json_end = json + sizeof(json);
+
+  snprintf(json_ptr, json_end - json_ptr,
+	   "[{ \"type\": \"microbit_heartbeat\", \"ticks\": %d, \"data\": {}}]\n", get_macro_ticks());
+  json_ptr += strnlen(json_ptr, json_end - json_ptr);
+
+  write(updates_fd, json, json_ptr - json);
+}
+
 // Button updates are formatted as:
 // { id: <0 or 1>, state: <0 or 1> }
 // where 1 means 'down'.
@@ -479,9 +492,9 @@ handle_timerfd_event(uint32_t ticks, int updates_fd) {
   pthread_mutex_lock(&code_lock);
   ticks = fire_ticker(ticks);
   pthread_mutex_unlock(&code_lock);
-  
+
   signal_interrupt();
-  
+
   if (get_macro_ticks() != macroticks_last_led_update) {
     check_led_updates(updates_fd);
     check_gpio_updates(updates_fd);
@@ -513,8 +526,8 @@ fastforward_timer(uint32_t ticks, int updates_fd) {
 // We can't epoll a file (so we inotify), but we can't inotify a file on a FUSE filesystem.
 // So we provide the client events in the pipe as a backup. The Grok terminal uses the pipe, but the
 // file is useful for local testing. See utils/*.sh for scripts to generate events.
-void*
-main_thread(void*) {
+void
+main_thread(bool heartbeat_ticks) {
   const int MAX_EVENTS = 10;
   int epoll_fd = epoll_create1(0);
 
@@ -536,13 +549,13 @@ main_thread(void*) {
   int client_wd = inotify_add_watch(notify_fd, "___client_events", IN_MODIFY);
   if (client_wd == -1) {
     perror("add watch");
-    return NULL;
+    return;
   }
   ev_client.events = EPOLLIN;
   ev_client.data.fd = notify_fd;
   if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, notify_fd, &ev_client) == -1) {
     perror("epoll_ctl");
-    return NULL;
+    return;
   }
 
   // Set up a timer for the ticker.
@@ -572,6 +585,9 @@ main_thread(void*) {
 
   // How long until we next need the timer callback to fire (in ticks).
   uint32_t ticks_until_fire_timer = 75;
+
+  // When did we last write a heartbeat (if enabled).
+  uint32_t last_heartbeat = 0;
 
   while (!shutdown) {
     struct epoll_event events[MAX_EVENTS];
@@ -625,6 +641,11 @@ main_thread(void*) {
 
 	ticks_until_fire_timer = handle_timerfd_event(ticks_until_fire_timer, updates_fd);
 
+	if (heartbeat_ticks && get_macro_ticks() > last_heartbeat + 100) {
+	  last_heartbeat = get_macro_ticks();
+	  write_heartbeat(updates_fd);
+	}
+
 	// See if our SIGINT handler has been called.
 	if (sigint_requested) {
 	  sigint_requested = false;
@@ -669,8 +690,6 @@ main_thread(void*) {
   close(client_fd);
   close(timer_fd);
   close(updates_fd);
-
-  return NULL;
 }
 
 // Makes STDIN non-blocking.
@@ -701,7 +720,7 @@ handle_sigint(int sig) {
 const int SIMULATOR_RESET = 99;
 
 int
-run_simulator() {
+run_simulator(bool heartbeat_ticks) {
   // Emulate the pull-ups on the button pins.
   // Note: MicroBitButton floats the pin on creation, but MicroBitPin doesn't
   // change the mode until the first read() (to PullDown).
@@ -735,7 +754,7 @@ run_simulator() {
   }
 
   // Run the main thread (on the main thread).
-  main_thread(NULL);
+  main_thread(heartbeat_ticks);
 
   // After main terminates, join on all other threads.
   for (int i = 0; i < NUM_THREADS; ++i) {
@@ -793,12 +812,15 @@ main(int argc, char** argv) {
   // if nothing specified.
   char script[MAX_SCRIPT_SIZE] = "from microbit import *\n";
   bool interactive_override = false;
+  bool heartbeat_ticks = false;
 
   for (int i = 1; i < argc; ++i) {
     if (strlen(argv[i]) > 0) {
       if (argv[i][0] == '-') {
 	if (argv[i][1] == 'i') {
 	  interactive_override = true;
+	} else if (argv[i][1] == 't') {
+	  heartbeat_ticks = true;
 	}
       } else {
 	int program_fd = open(argv[i], O_RDONLY);
@@ -839,7 +861,7 @@ main(int argc, char** argv) {
         break;
       } else if (pid == 0) {
         // Child. Return directly from main().
-        return run_simulator();
+        return run_simulator(heartbeat_ticks);
       } else {
         // Parent. Block until the child exits.
         int wstatus = 0;
@@ -851,7 +873,7 @@ main(int argc, char** argv) {
       }
     }
   } else {
-    run_simulator();
+    run_simulator(heartbeat_ticks);
   }
 
   free(flash_rom);
