@@ -11,6 +11,7 @@ extern "C" void app_main();
 #include <string.h>
 #include <sys/epoll.h>
 #include <sys/inotify.h>
+#include <sys/prctl.h>
 #include <sys/timerfd.h>
 #include <sys/wait.h>
 #include <termios.h>
@@ -861,6 +862,8 @@ main(int argc, char** argv) {
         break;
       } else if (pid == 0) {
         // Child. Return directly from main().
+	// If the parent gets killed, term.
+	prctl(PR_SET_PDEATHSIG, SIGKILL);
         return run_simulator(heartbeat_ticks);
       } else {
         // Parent. Block until the child exits.
