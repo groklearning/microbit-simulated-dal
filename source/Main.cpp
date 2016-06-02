@@ -528,7 +528,7 @@ fastforward_timer(uint32_t ticks, int updates_fd) {
 // So we provide the client events in the pipe as a backup. The Grok terminal uses the pipe, but the
 // file is useful for local testing. See utils/*.sh for scripts to generate events.
 void
-main_thread(bool heartbeat_ticks) {
+main_thread(bool heartbeat_ticks, bool fast_mode) {
   const int MAX_EVENTS = 10;
   int epoll_fd = epoll_create1(0);
 
@@ -569,7 +569,7 @@ main_thread(bool heartbeat_ticks) {
   timer_spec.it_interval.tv_sec = 0;
   timer_spec.it_interval.tv_nsec = 0;
   timer_spec.it_value.tv_sec = 0;
-  timer_spec.it_value.tv_nsec = 16000 * 75;
+  timer_spec.it_value.tv_nsec = fast_mode ? 16000 : 16000 * 75;
   timerfd_settime(timer_fd, 0, &timer_spec, NULL);
 
   // Open the events pipe.
@@ -672,7 +672,7 @@ main_thread(bool heartbeat_ticks) {
 	}
 
 	// Reset the timer_fd.
-        timer_spec.it_value.tv_nsec = 16000 * ticks_until_fire_timer;
+        timer_spec.it_value.tv_nsec = fast_mode ? 16000 : 16000 * ticks_until_fire_timer;
         timerfd_settime(timer_fd, 0, &timer_spec, NULL);
       } else if (events[n].data.fd == client_pipe_fd) {
 	// A write happened to the client events pipe.
@@ -721,7 +721,7 @@ handle_sigint(int sig) {
 const int SIMULATOR_RESET = 99;
 
 int
-run_simulator(bool heartbeat_ticks) {
+run_simulator(bool heartbeat_ticks, bool fast_mode) {
   // Emulate the pull-ups on the button pins.
   // Note: MicroBitButton floats the pin on creation, but MicroBitPin doesn't
   // change the mode until the first read() (to PullDown).
@@ -755,7 +755,7 @@ run_simulator(bool heartbeat_ticks) {
   }
 
   // Run the main thread (on the main thread).
-  main_thread(heartbeat_ticks);
+  main_thread(heartbeat_ticks, fast_mode);
 
   // After main terminates, join on all other threads.
   for (int i = 0; i < NUM_THREADS; ++i) {
@@ -814,6 +814,7 @@ main(int argc, char** argv) {
   char script[MAX_SCRIPT_SIZE] = "from microbit import *\n";
   bool interactive_override = false;
   bool heartbeat_ticks = false;
+  bool fast_mode = false;
 
   for (int i = 1; i < argc; ++i) {
     if (strlen(argv[i]) > 0) {
@@ -822,6 +823,8 @@ main(int argc, char** argv) {
 	  interactive_override = true;
 	} else if (argv[i][1] == 't') {
 	  heartbeat_ticks = true;
+	} else if (argv[i][1] == 'f') {
+	  fast_mode = true;
 	}
       } else {
 	int program_fd = open(argv[i], O_RDONLY);
@@ -864,7 +867,7 @@ main(int argc, char** argv) {
         // Child. Return directly from main().
 	// If the parent gets killed, term.
 	prctl(PR_SET_PDEATHSIG, SIGKILL);
-        return run_simulator(heartbeat_ticks);
+        return run_simulator(heartbeat_ticks, fast_mode);
       } else {
         // Parent. Block until the child exits.
         int wstatus = 0;
@@ -876,7 +879,7 @@ main(int argc, char** argv) {
       }
     }
   } else {
-    run_simulator(heartbeat_ticks);
+    run_simulator(heartbeat_ticks, fast_mode);
   }
 
   free(flash_rom);
