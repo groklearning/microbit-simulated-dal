@@ -1,2 +1,2 @@
 #!/bin/sh
-./send-client-event.sh '[ { "type": "microbit_button", "data": { "id": '$1', "state": '$2' } } ]'
+$(cd $(dirname $0); pwd)/send-client-event.sh '[ { "type": "microbit_button", "data": { "id": '$1', "state": '$2' } } ]'

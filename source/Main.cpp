@@ -318,6 +318,19 @@ write_heartbeat(int updates_fd) {
   write(updates_fd, json, json_ptr - json);
 }
 
+void
+write_event_ack(int updates_fd) {
+  char json[1024];
+  char* json_ptr = json;
+  char* json_end = json + sizeof(json);
+
+  snprintf(json_ptr, json_end - json_ptr,
+	   "[{ \"type\": \"microbit_ack\", \"ticks\": %d, \"data\": {}}]\n", get_macro_ticks());
+  json_ptr += strnlen(json_ptr, json_end - json_ptr);
+
+  write(updates_fd, json, json_ptr - json);
+}
+
 // Button updates are formatted as:
 // { id: <0 or 1>, state: <0 or 1> }
 // where 1 means 'down'.
@@ -453,7 +466,7 @@ process_client_json(const json_value* json) {
 // Handle an epoll event from either the pipe or the file.
 // Each line of the file/pipe should be a JSON-formatted array of events.
 void
-process_client_event(int fd) {
+process_client_event(int fd, int updates_fd) {
   char buf[10240];
   ssize_t len = read(fd, buf, sizeof(buf));
   if (len == sizeof(buf)) {
@@ -469,6 +482,7 @@ process_client_event(int fd) {
     json_value* json = json_parse_n(line_start, line_end - line_start);
     if (json) {
       process_client_json(json);
+      write_event_ack(updates_fd);
       json_value_destroy(json);
     } else {
       fprintf(stderr, "Invalid JSON\n");
@@ -632,9 +646,12 @@ main_thread(bool heartbeat_ticks, bool fast_mode) {
         for (uint8_t* p = buf; p < buf + len; p += sizeof(inotify_event) + event->len) {
           event = reinterpret_cast<inotify_event*>(p);
           if (event->wd == client_wd) {
-            process_client_event(client_fd);
+            process_client_event(client_fd, updates_fd);
           }
         }
+      } else if (events[n].data.fd == client_pipe_fd) {
+	// A write happened to the client events pipe.
+        process_client_event(client_pipe_fd, updates_fd);
       } else if (events[n].data.fd == timer_fd) {
 	// Timer callback.
         uint64_t t;
@@ -642,7 +659,7 @@ main_thread(bool heartbeat_ticks, bool fast_mode) {
 
 	ticks_until_fire_timer = handle_timerfd_event(ticks_until_fire_timer, updates_fd);
 
-	if (heartbeat_ticks && get_macro_ticks() >= last_heartbeat + 50) {
+	if (heartbeat_ticks && get_macro_ticks() >= last_heartbeat + 500) {
 	  last_heartbeat = get_macro_ticks();
 	  write_heartbeat(updates_fd);
 	}
@@ -674,9 +691,6 @@ main_thread(bool heartbeat_ticks, bool fast_mode) {
 	// Reset the timer_fd.
         timer_spec.it_value.tv_nsec = fast_mode ? 16000 : 16000 * ticks_until_fire_timer;
         timerfd_settime(timer_fd, 0, &timer_spec, NULL);
-      } else if (events[n].data.fd == client_pipe_fd) {
-	// A write happened to the client events pipe.
-        process_client_event(client_pipe_fd);
       }
     }
   }
