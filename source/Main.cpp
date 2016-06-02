@@ -642,7 +642,7 @@ main_thread(bool heartbeat_ticks, bool fast_mode) {
 
 	ticks_until_fire_timer = handle_timerfd_event(ticks_until_fire_timer, updates_fd);
 
-	if (heartbeat_ticks && get_macro_ticks() > last_heartbeat + 100) {
+	if (heartbeat_ticks && get_macro_ticks() >= last_heartbeat + 50) {
 	  last_heartbeat = get_macro_ticks();
 	  write_heartbeat(updates_fd);
 	}
