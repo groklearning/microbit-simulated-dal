@@ -133,18 +133,18 @@ MicroBitCompass::heading() {
   float x = (float) getX(SIMPLE_CARTESIAN);
   float y = (float) getY(SIMPLE_CARTESIAN);
   float z = (float) getZ(SIMPLE_CARTESIAN);
-  
+
   // Precompute cos and sin of pitch and roll angles to make the calculation a little more efficient.
   float sinPhi = sin(phi);
   float cosPhi = cos(phi);
   float sinTheta = sin(theta);
   float cosTheta = cos(theta);
-  
+
   float bearing = (360*atan2(z*sinPhi - y*cosPhi, x*cosTheta + y*sinTheta*sinPhi + z*sinTheta*cosPhi)) / (2*PI);
-  
+
   if (bearing < 0)
     bearing += 360.0;
-  
+
   return (int) bearing;
 }
 int
@@ -168,7 +168,7 @@ MicroBitCompass::getFieldStrength() {
   double x = getX();
   double y = getY();
   double z = getZ();
-  
+
   return (int) sqrt(x*x + y*y + z*z);
 }
 int
@@ -354,10 +354,13 @@ MicroBit::getTickPeriod() {
 
 unsigned long
 MicroBit::systemTime() {
-  struct timespec ts;
-  clock_gettime(CLOCK_MONOTONIC_COARSE, &ts);
-  unsigned long ms = ts.tv_sec * 1000;
-  ms += ts.tv_nsec / 1000000ULL;
+  // TODO(jim): In regular mode, sync to the system clock.
+  //struct timespec ts;
+  //clock_gettime(CLOCK_MONOTONIC_COARSE, &ts);
+  //unsigned long ms = ts.tv_sec * 1000;
+  //ms += ts.tv_nsec / 1000000ULL;
+  //return ms - _boot_time;
+  unsigned long ms = get_macro_ticks() * 6;
   return ms - _boot_time;
 }
 
