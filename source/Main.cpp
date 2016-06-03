@@ -247,7 +247,13 @@ check_gpio_updates(int updates_fd) {
     json_ptr += strnlen(json_ptr, json_end - json_ptr);
 
     list_to_json("p", &json_ptr, json_end, pins, sizeof(pins) / sizeof(uint32_t));
+
+    snprintf(json_ptr, json_end - json_ptr, ", ");
+    json_ptr += strnlen(json_ptr, json_end - json_ptr);
     list_to_json("pwmd", &json_ptr, json_end, pwm_dutycycle, sizeof(pwm_dutycycle) / sizeof(uint32_t));
+
+    snprintf(json_ptr, json_end - json_ptr, ", ");
+    json_ptr += strnlen(json_ptr, json_end - json_ptr);
     list_to_json("pwmp", &json_ptr, json_end, pwm_period, sizeof(pwm_period) / sizeof(uint32_t));
 
     snprintf(json_ptr, json_end - json_ptr, "}}]\n");
