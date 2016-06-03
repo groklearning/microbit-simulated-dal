@@ -542,7 +542,7 @@ fastforward_timer(uint32_t ticks, int updates_fd) {
 // So we provide the client events in the pipe as a backup. The Grok terminal uses the pipe, but the
 // file is useful for local testing. See utils/*.sh for scripts to generate events.
 void
-main_thread(bool heartbeat_ticks, bool fast_mode) {
+main_thread(bool heartbeat_ticks, bool fast_mode, bool debug_mode) {
   const int MAX_EVENTS = 10;
   int epoll_fd = epoll_create1(0);
 
@@ -735,7 +735,7 @@ handle_sigint(int sig) {
 const int SIMULATOR_RESET = 99;
 
 int
-run_simulator(bool heartbeat_ticks, bool fast_mode) {
+run_simulator(bool heartbeat_ticks, bool fast_mode, bool debug_mode) {
   // Emulate the pull-ups on the button pins.
   // Note: MicroBitButton floats the pin on creation, but MicroBitPin doesn't
   // change the mode until the first read() (to PullDown).
@@ -769,7 +769,7 @@ run_simulator(bool heartbeat_ticks, bool fast_mode) {
   }
 
   // Run the main thread (on the main thread).
-  main_thread(heartbeat_ticks, fast_mode);
+  main_thread(heartbeat_ticks, fast_mode, debug_mode);
 
   // After main terminates, join on all other threads.
   for (int i = 0; i < NUM_THREADS; ++i) {
@@ -810,8 +810,6 @@ uint32_t __data_end__ = 0;
 uint32_t __data_start__ = 0;
 uint32_t __etext = 0;
 
-const bool ALLOW_FORK_FOR_RESET = true;
-
 int
 main(int argc, char** argv) {
   unbuffered_terminal(true);
@@ -829,6 +827,7 @@ main(int argc, char** argv) {
   bool interactive_override = false;
   bool heartbeat_ticks = false;
   bool fast_mode = false;
+  bool debug_mode = false;
 
   for (int i = 1; i < argc; ++i) {
     if (strlen(argv[i]) > 0) {
@@ -839,6 +838,8 @@ main(int argc, char** argv) {
 	  heartbeat_ticks = true;
 	} else if (argv[i][1] == 'f') {
 	  fast_mode = true;
+	} else if (argv[i][1] == 'd') {
+	  debug_mode = true;
 	}
       } else {
 	int program_fd = open(argv[i], O_RDONLY);
@@ -868,7 +869,9 @@ main(int argc, char** argv) {
 
   int status = 0;
 
-  if (ALLOW_FORK_FOR_RESET) {
+  if (debug_mode) {
+    run_simulator(heartbeat_ticks, fast_mode, debug_mode);
+  } else {
     // Micropython provides a 'reset()' method that restarts the simulation.
     // Easiest way to do that is to fork() the simulation and just start a new one when it
     // signals that it wants to restart.
@@ -881,7 +884,7 @@ main(int argc, char** argv) {
         // Child. Return directly from main().
 	// If the parent gets killed, term.
 	prctl(PR_SET_PDEATHSIG, SIGKILL);
-        return run_simulator(heartbeat_ticks, fast_mode);
+        return run_simulator(heartbeat_ticks, fast_mode, false);
       } else {
         // Parent. Block until the child exits.
         int wstatus = 0;
@@ -892,8 +895,6 @@ main(int argc, char** argv) {
         }
       }
     }
-  } else {
-    run_simulator(heartbeat_ticks, fast_mode);
   }
 
   free(flash_rom);
