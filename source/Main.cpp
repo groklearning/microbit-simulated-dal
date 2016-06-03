@@ -207,10 +207,15 @@ list_to_json(const char* field, char** json_ptr, char* json_end, uint32_t* value
 void
 check_gpio_updates(int updates_fd) {
   static uint32_t prev_pins[23] = {0};
+  static uint32_t prev_pwm_dutycycle[23] = {0};
+  static uint32_t prev_pwm_period[23] = {0};
 
   pthread_mutex_lock(&code_lock);
 
   uint32_t pins[23] = {0};
+  uint32_t pwm_dutycycle[23] = {0};
+  uint32_t pwm_period[23] = {0};
+
   for (int i = 0; i < sizeof(pins) / sizeof(uint32_t); ++i) {
     int pin = MICROBIT_PIN_MAP[i];
     if (pin == MICROBIT_PIN_3V) {
@@ -222,12 +227,18 @@ check_gpio_updates(int updates_fd) {
     } else {
       // Get the simulated pin state.
       pins[i] = get_gpio_pin(pin).get_state();
+      if (pins[i] == GPIO_PIN_OUTPUT_PWM) {
+	pwm_dutycycle[i] = get_gpio_pin(pin).get_pwm();
+	pwm_period[i] = get_gpio_pin(pin).get_pwm_period();
+      }
     }
   }
 
   pthread_mutex_unlock(&code_lock);
 
-  if (memcmp(pins, prev_pins, sizeof(prev_pins)) != 0) {
+  if (memcmp(pins, prev_pins, sizeof(prev_pins)) != 0
+      || memcmp(pwm_dutycycle, prev_pwm_dutycycle, sizeof(prev_pwm_dutycycle)) != 0
+      || memcmp(pwm_period, prev_pwm_period, sizeof(prev_pwm_period)) != 0) {
     char json[1024];
     char* json_ptr = json;
     char* json_end = json + sizeof(json);
@@ -236,6 +247,8 @@ check_gpio_updates(int updates_fd) {
     json_ptr += strnlen(json_ptr, json_end - json_ptr);
 
     list_to_json("p", &json_ptr, json_end, pins, sizeof(pins) / sizeof(uint32_t));
+    list_to_json("pwmd", &json_ptr, json_end, pwm_dutycycle, sizeof(pwm_dutycycle) / sizeof(uint32_t));
+    list_to_json("pwmp", &json_ptr, json_end, pwm_period, sizeof(pwm_period) / sizeof(uint32_t));
 
     snprintf(json_ptr, json_end - json_ptr, "}}]\n");
     json_ptr += strnlen(json_ptr, json_end - json_ptr);
@@ -243,6 +256,8 @@ check_gpio_updates(int updates_fd) {
     write(updates_fd, json, json_ptr - json);
 
     memcpy(prev_pins, pins, sizeof(prev_pins));
+    memcpy(prev_pwm_dutycycle, pwm_dutycycle, sizeof(prev_pwm_dutycycle));
+    memcpy(prev_pwm_period, pwm_period, sizeof(prev_pwm_period));
   }
 }
 
@@ -828,6 +843,7 @@ main(int argc, char** argv) {
   bool heartbeat_ticks = false;
   bool fast_mode = false;
   bool debug_mode = false;
+  bool script_loaded = false;
 
   for (int i = 1; i < argc; ++i) {
     if (strlen(argv[i]) > 0) {
@@ -842,15 +858,20 @@ main(int argc, char** argv) {
 	  debug_mode = true;
 	}
       } else {
+	script_loaded = true;
 	int program_fd = open(argv[i], O_RDONLY);
 	if (program_fd != -1) {
 	  ssize_t len = read(program_fd, script, sizeof(script));
 	  script[len] = 0;
-	  interactive = interactive_override;
 	}
 	close(program_fd);
       }
     }
+  }
+
+  // When a script is loaded, pay attention to the -i flag.
+  if (script_loaded) {
+    interactive = interactive_override;
   }
 
   flash_rom = static_cast<uint8_t*>(malloc(FLASH_ROM_SIZE));

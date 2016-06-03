@@ -445,7 +445,11 @@ MicroBitPin::getDigitalValue() {
 }
 int
 MicroBitPin::setAnalogValue(int value) {
-  fprintf(stderr, "Unsupported: %s\n", __FUNCTION__);
+  if (value == 0) {
+    setDigitalValue(0);
+  } else {
+    get_gpio_pin(name).set_pwm(value);
+  }
   return 0;
 }
 int
@@ -468,10 +472,12 @@ MicroBitPin::isOutput() {
 }
 int
 MicroBitPin::isDigital() {
+  fprintf(stderr, "Unsupported: %s\n", __FUNCTION__);
   return true;
 }
 int
 MicroBitPin::isAnalog() {
+  fprintf(stderr, "Unsupported: %s\n", __FUNCTION__);
   return false;
 }
 int
@@ -486,23 +492,21 @@ MicroBitPin::setServoPulseUs(int pulseWidth) {
 }
 int
 MicroBitPin::setAnalogPeriod(int period) {
-  fprintf(stderr, "Unsupported: %s\n", __FUNCTION__);
+  get_gpio_pin(name).set_pwm_period(period * 1000);
   return 0;
 }
 int
 MicroBitPin::setAnalogPeriodUs(int period) {
-  fprintf(stderr, "Unsupported: %s\n", __FUNCTION__);
+  get_gpio_pin(name).set_pwm_period(period);
   return 0;
 }
 int
 MicroBitPin::getAnalogPeriodUs() {
-  fprintf(stderr, "Unsupported: %s\n", __FUNCTION__);
-  return 0;
+  return get_gpio_pin(name).get_pwm_period();
 }
 int
 MicroBitPin::getAnalogPeriod() {
-  fprintf(stderr, "Unsupported: %s\n", __FUNCTION__);
-  return 0;
+  return get_gpio_pin(name).get_pwm_period() / 1000;
 }
 
 // MicroBitSerial.h

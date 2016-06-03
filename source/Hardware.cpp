@@ -543,17 +543,19 @@ get_display_led(uint32_t n) {
 }
 
 GpioPin::GpioPin(uint32_t pin)
-    : _pin(pin), _output(false), _is_output(false), _pull(PullDefault), _analog(NAN) {
+  : _pin(pin), _output(false), _is_output(false), _pull(PullDefault), _analog(NAN), _is_pwm(false), _pwm_dutycycle(0), _pwm_period(1000) {
 }
 
 void
 GpioPin::set_input_mode(PinMode pull) {
   _is_output = false;
+  _is_pwm = false;
   _pull = pull;
 }
 void
 GpioPin::set_output_mode() {
   _is_output = true;
+  _is_pwm = false;
   _pull = PullNone;
 }
 bool
@@ -602,6 +604,16 @@ GpioPin::set_input_voltage(double a) {
   _analog = a;
   return true;
 }
+void
+GpioPin::set_pwm(uint32_t dutycycle) {
+  set_output_mode();
+  _is_pwm = true;
+  _pwm_dutycycle = dutycycle;
+}
+void
+GpioPin::set_pwm_period(uint32_t us) {
+  _pwm_period = us;
+}
 double
 GpioPin::get_voltage() {
   if (_is_output) {
@@ -621,13 +633,23 @@ GpioPin::get_voltage() {
     }
   }
 }
+double GpioPin::get_pwm() {
+  return _pwm_dutycycle;
+}
+double GpioPin::get_pwm_period() {
+  return _pwm_period;
+}
 GpioPinState
 GpioPin::get_state() {
   if (_pin >= COL1 && _pin <= ROW3) {
     return GPIO_PIN_RESERVED;
   }
   if (_is_output) {
-    return _output ? GPIO_PIN_OUTPUT_HIGH : GPIO_PIN_OUTPUT_LOW;
+    if (_is_pwm) {
+      return GPIO_PIN_OUTPUT_PWM;
+    } else {
+      return _output ? GPIO_PIN_OUTPUT_HIGH : GPIO_PIN_OUTPUT_LOW;
+    }
   } else {
     switch (_pull) {
       case PullNone:

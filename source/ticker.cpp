@@ -5,6 +5,8 @@
 #include "nrf.h"
 #include "Hardware.h"
 
+#include "MicroBitFiber.h"
+
 // Some background on the microbit timers:
 // The microbit-micropython code sets up a 16us ticker which it uses to drive four timers.
 // One (timer 3) is fixed at 375 ticks (6ms -- this is the "slow" callback) which the
@@ -88,8 +90,10 @@ set_low_priority_callback(callback_ptr callback, int id) {
 // Timer callback. Fires any tickers that have expired since the last call,
 // and returns the number of ticks until the next ticker that needs to be fired.
 uint32_t
-fire_ticker(uint32_t ticks) {
-  _ticks += ticks;
+fire_ticker(uint32_t ticks_since_last_call) {
+  _ticks += ticks_since_last_call;
+  // Set the tick counter in MicroBitFiber.h
+  ::ticks = _ticks;
 
   if (_ticks >= _timer_ticks[3]) {
     ++_macro_ticks;
@@ -113,7 +117,7 @@ fire_ticker(uint32_t ticks) {
       next = _timer_ticks[i];
     }
   }
-  
+
   return next - _ticks;
 }
 

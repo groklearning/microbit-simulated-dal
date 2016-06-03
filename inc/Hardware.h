@@ -36,7 +36,11 @@ class GpioPin {
   bool _is_output;
   PinMode _pull;
   double _analog;
-  double _pwm;
+  bool _is_pwm;
+  // 0-1024
+  uint32_t _pwm_dutycycle;
+  // in microseconds.
+  uint32_t _pwm_period;
   uint32_t _on_ticks;
   uint32_t _duration_ticks;
  public:
@@ -47,6 +51,8 @@ class GpioPin {
   bool set_high();
   bool set_digital(bool d);
   bool set_input_voltage(double a);
+  void set_pwm(uint32_t dutycycle);
+  void set_pwm_period(uint32_t us);
   double get_voltage();
   GpioPinState get_state();
   bool is_high();
@@ -56,6 +62,8 @@ class GpioPin {
   bool is_floating();
   bool is_pullup();
   bool is_pulldown();
+  double get_pwm();
+  double get_pwm_period();
   uint32_t ticks();
 };
 
