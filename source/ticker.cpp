@@ -93,7 +93,7 @@ uint32_t
 fire_ticker(uint32_t ticks_since_last_call) {
   _ticks += ticks_since_last_call;
   // Set the tick counter in MicroBitFiber.h
-  ::ticks = _ticks;
+  ::ticks = _macro_ticks * 6;
 
   if (_ticks >= _timer_ticks[3]) {
     ++_macro_ticks;
