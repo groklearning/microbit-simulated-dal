@@ -329,15 +329,15 @@ check_led_updates(int updates_fd) {
 // Returns the number of macro ticks that we expect should have passed (based on the real clock).
 // This only makes sense in normal mode (i.e. not fast mode).
 uint32_t
-expected_macro_ticks() {
+expected_macro_ticks(bool reset = false) {
   static uint32_t starting_clock = 0;
 
   struct timespec t;
   clock_gettime(CLOCK_MONOTONIC_COARSE, &t);
   uint32_t clock_ticks = (t.tv_sec * 1000 + (t.tv_nsec / 1000000)) / 6;
 
-  if (starting_clock == 0) {
-    starting_clock = clock_ticks;
+  if (starting_clock == 0 || reset) {
+    starting_clock = clock_ticks - get_macro_ticks();
   }
 
   return clock_ticks - starting_clock;
@@ -566,6 +566,7 @@ fastforward_timer(uint32_t ticks, int updates_fd) {
   uint32_t start_ticks = get_macro_ticks();
   uint32_t ticks_until_fire_timer = 75;
   while (get_macro_ticks() < start_ticks + ticks) {
+    expected_macro_ticks(true);
     ticks_until_fire_timer = handle_timerfd_event(ticks_until_fire_timer, updates_fd);
   }
 }
@@ -743,11 +744,13 @@ main_thread(bool heartbeat_ticks, bool fast_mode, bool debug_mode) {
 	  // Otherwise, in regular mode, sleep for 16us * required.
 	  sleep_nsec *= ticks_until_fire_timer;
 
-	  // But scale +/- 10% so that we converge on 'real' time.
-	  if (get_macro_ticks() > expected_macro_ticks()) {
+	  // But scale so that we converge on 'real' time.
+	  uint32_t e = expected_macro_ticks();
+	  if (get_macro_ticks() > e) {
 	    sleep_nsec = (sleep_nsec * 11) / 10;
-	  } else {
-	    sleep_nsec = (sleep_nsec * 9) / 10;
+	  } else if (get_macro_ticks() < e) {
+	    uint32_t d = std::min(9U, e - get_macro_ticks());
+	    sleep_nsec = (sleep_nsec * (10-d)) / 10;
 	  }
 	}
 
