@@ -326,14 +326,32 @@ check_led_updates(int updates_fd) {
   }
 }
 
+// Returns the number of macro ticks that we expect should have passed (based on the real clock).
+// This only makes sense in normal mode (i.e. not fast mode).
+uint32_t
+expected_macro_ticks() {
+  static uint32_t starting_clock = 0;
+
+  struct timespec t;
+  clock_gettime(CLOCK_MONOTONIC_COARSE, &t);
+  uint32_t clock_ticks = (t.tv_sec * 1000 + (t.tv_nsec / 1000000)) / 6;
+
+  if (starting_clock == 0) {
+    starting_clock = clock_ticks;
+  }
+
+  return clock_ticks - starting_clock;
+}
+
 void
 write_heartbeat(int updates_fd) {
+
   char json[1024];
   char* json_ptr = json;
   char* json_end = json + sizeof(json);
 
   snprintf(json_ptr, json_end - json_ptr,
-	   "[{ \"type\": \"microbit_heartbeat\", \"ticks\": %d, \"data\": {}}]\n", get_macro_ticks());
+	   "[{ \"type\": \"microbit_heartbeat\", \"ticks\": %d, \"data\": { real_ticks: \"%d\" }}]\n", get_macro_ticks(), expected_macro_ticks());
   json_ptr += strnlen(json_ptr, json_end - json_ptr);
 
   write(updates_fd, json, json_ptr - json);
@@ -569,6 +587,10 @@ main_thread(bool heartbeat_ticks, bool fast_mode, bool debug_mode) {
 
   int updates_fd = open("___device_updates", O_CREAT | O_TRUNC | O_WRONLY, S_IRUSR | S_IWUSR);
 
+  if (heartbeat_ticks) {
+    write_heartbeat(updates_fd);
+  }
+
   // Add non-blocking stdin to epoll set.
   struct epoll_event ev_stdin;
   fcntl(STDIN_FILENO, F_SETFL, fcntl(STDIN_FILENO, F_GETFL, 0) | O_NONBLOCK);
@@ -678,8 +700,12 @@ main_thread(bool heartbeat_ticks, bool fast_mode, bool debug_mode) {
         uint64_t t;
         read(timer_fd, &t, sizeof(uint64_t));
 
+	// Call the timer, telling it how many ticks have elapsed since the last call.
+	// It returns the number of ticks until the next call.
 	ticks_until_fire_timer = handle_timerfd_event(ticks_until_fire_timer, updates_fd);
 
+	// Periodically heartbeat if the '-t' flag is enabled.
+	// This is useful for the marker to ensure that it sees an event at least every N ticks.
 	if (heartbeat_ticks && get_macro_ticks() >= last_heartbeat + 500) {
 	  last_heartbeat = get_macro_ticks();
 	  write_heartbeat(updates_fd);
@@ -709,8 +735,25 @@ main_thread(bool heartbeat_ticks, bool fast_mode, bool debug_mode) {
 	  fastforward_timer(10000, updates_fd);
 	}
 
+	// Figure out how long to set the timerfd for. One tick is 16us.
+	// In fast mode, ignore how many ticks we need to sleep for, just sleep for 16us and report
+	// that we slept for the required amount.
+	uint32_t sleep_nsec = 16000;
+	if (!fast_mode) {
+	  // Otherwise, in regular mode, sleep for 16us * required.
+	  sleep_nsec *= ticks_until_fire_timer;
+
+	  // But scale +/- 10% so that we converge on 'real' time.
+	  if (get_macro_ticks() > expected_macro_ticks()) {
+	    sleep_nsec = (sleep_nsec * 11) / 10;
+	  } else {
+	    sleep_nsec = (sleep_nsec * 9) / 10;
+	  }
+	}
+
+
 	// Reset the timer_fd.
-        timer_spec.it_value.tv_nsec = fast_mode ? 16000 : 16000 * ticks_until_fire_timer;
+        timer_spec.it_value.tv_nsec = sleep_nsec;
         timerfd_settime(timer_fd, 0, &timer_spec, NULL);
       }
     }
