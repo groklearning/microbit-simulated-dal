@@ -351,7 +351,7 @@ write_heartbeat(int updates_fd) {
   char* json_end = json + sizeof(json);
 
   snprintf(json_ptr, json_end - json_ptr,
-	   "[{ \"type\": \"microbit_heartbeat\", \"ticks\": %d, \"data\": { real_ticks: \"%d\" }}]\n", get_macro_ticks(), expected_macro_ticks());
+	   "[{ \"type\": \"microbit_heartbeat\", \"ticks\": %d, \"data\": { \"real_ticks\": \"%d\" }}]\n", get_macro_ticks(), expected_macro_ticks());
   json_ptr += strnlen(json_ptr, json_end - json_ptr);
 
   write(updates_fd, json, json_ptr - json);
