@@ -783,6 +783,12 @@ unbuffered_terminal(bool enable) {
     tcgetattr(STDIN_FILENO, &old_tio);
     struct termios new_tio = old_tio;
 
+    // Disable echo if this terminal doesn't have it.
+    if (!(old_tio.c_lflag & ECHO)) {
+      fprintf(stderr, "no echo\n");
+      disable_echo();
+    }
+
     // disable canonical mode (buffered i/o) and local echo
     new_tio.c_lflag &= (~ICANON & ~ECHO);
 

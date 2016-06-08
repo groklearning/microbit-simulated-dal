@@ -1,5 +1,7 @@
 #include <math.h>
 #include <stdio.h>
+#include <termios.h>
+#include <unistd.h>
 
 #include "PinNames.h"
 #include "gpio_api.h"
@@ -29,6 +31,13 @@ volatile uint serial_buffer_tail = 0;
 
 bool serial_irq_rx_enabled = false;
 uart_irq_handler serial_irq = 0;
+}
+
+namespace {
+volatile bool _reset_flag = false;
+volatile bool _panic_flag = false;
+volatile bool _disconnect_flag = false;
+volatile bool _disable_echo = false;
 }
 
 // Hardware.h
@@ -69,7 +78,6 @@ void
 serial_irq_set(serial_t* obj, SerialIrq irq, uint32_t enable) {
   serial_irq_rx_enabled = enable;
 }
-
 int
 serial_getc(serial_t* obj) {
   if (!serial_readable(obj)) {
@@ -82,6 +90,13 @@ serial_getc(serial_t* obj) {
 void
 serial_putc(serial_t* obj, int c) {
   if (c != '\r') {
+    if (_disable_echo) {
+      int prev = (serial_buffer_tail + sizeof(serial_buffer) - 1) % sizeof(serial_buffer);
+      if (c == serial_buffer[prev]) {
+	serial_buffer[prev] = 0xff;
+	return;
+      }
+    }
     putc(c, stdout);
     fflush(stdout);
   }
@@ -741,12 +756,6 @@ get_magnetometer(int32_t* x, int32_t* y, int32_t* z) {
   get_gpio_pin(MAG_INT1).set_input_voltage(3.3);
 }
 
-namespace {
-volatile bool _reset_flag = false;
-volatile bool _panic_flag = false;
-volatile bool _disconnect_flag = false;
-}
-
 // Called by microbit.reset()
 void
 set_reset_flag() {
@@ -780,4 +789,10 @@ set_disconnect_flag() {
 bool
 get_disconnect_flag() {
   return _disconnect_flag;
+}
+
+// Called by Main.cpp to disable echo if the terminal doesn't have it enabled.
+void
+disable_echo() {
+  _disable_echo = true;
 }

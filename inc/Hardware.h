@@ -102,6 +102,8 @@ bool get_panic_flag();
 void set_disconnect_flag();
 bool get_disconnect_flag();
 
+void disable_echo();
+
 uint32_t get_ticks();
 uint32_t get_macro_ticks();
 
