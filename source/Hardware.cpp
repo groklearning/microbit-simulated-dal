@@ -28,6 +28,7 @@ namespace {
 uint8_t serial_buffer[10240];
 volatile uint serial_buffer_head = 0;
 volatile uint serial_buffer_tail = 0;
+volatile uint serial_buffer_echo = 0;
 
 bool serial_irq_rx_enabled = false;
 uart_irq_handler serial_irq = 0;
@@ -89,17 +90,37 @@ serial_getc(serial_t* obj) {
 }
 void
 serial_putc(serial_t* obj, int c) {
-  if (c != '\r') {
-    if (_disable_echo) {
-      int prev = (serial_buffer_tail + sizeof(serial_buffer) - 1) % sizeof(serial_buffer);
-      if (c == serial_buffer[prev]) {
-	serial_buffer[prev] = 0xff;
+  // We only send '\r' (see serial_add_byte). They send '\r\n'. So only process the '\r'.
+  if (c == '\n') {
+    return;
+  }
+
+  if (_disable_echo) {
+    // If echo is disabled, then ignore any bytes that match recently sent bytes.
+    // Search forwards from serial_buffer_echo.
+
+    // ....print('hi')\r.....
+    //     ^e   ^t      ^h
+    // if we receive 'p', then advance e, and don't print it. Keep doing that while e < t.
+
+    while (serial_buffer_echo != serial_buffer_tail) {
+      int b = serial_buffer[serial_buffer_echo];
+      serial_buffer_echo = (serial_buffer_echo + 1) % sizeof(serial_buffer);
+      // Skip unprintables below ' ' (but include nl/cr).
+      if (b < ' ' && !(b == '\r' || b == '\n')) {
+	continue;
+      }
+      // This was a byte we sent, so don't echo it.
+      if (b == c) {
 	return;
       }
     }
-    putc(c, stdout);
-    fflush(stdout);
   }
+  if (c == '\r') {
+    c = '\n';
+  }
+  putc(c, stdout);
+  fflush(stdout);
 }
 int
 serial_readable(serial_t* obj) {

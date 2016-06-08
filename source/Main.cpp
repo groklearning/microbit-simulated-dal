@@ -785,7 +785,6 @@ unbuffered_terminal(bool enable) {
 
     // Disable echo if this terminal doesn't have it.
     if (!(old_tio.c_lflag & ECHO)) {
-      fprintf(stderr, "no echo\n");
       disable_echo();
     }
 
