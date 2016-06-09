@@ -441,20 +441,21 @@ process_client_magnet(const json_value* data) {
 void
 process_client_pins(const json_value* data) {
   const json_value* pin = json_value_get(data, "pin");
-  const json_value* voltage = json_value_get(data, "pin");
+  const json_value* voltage = json_value_get(data, "voltage");
   if (!pin || !voltage || pin->type != JSON_VALUE_TYPE_NUMBER || voltage->type != JSON_VALUE_TYPE_NUMBER) {
     fprintf(stderr, "Pin number or voltage missing.\n");
     return;
   }
 
-  int pin_int = uint32_t(pin->as.number);
-  if (pin_int > 20) {
+  int pin_mb = uint32_t(pin->as.number);
+  if (pin_mb > 20) {
     fprintf(stderr, "Invalid pin number.\n");
     return;
   }
 
+  int pin_nrf = MICROBIT_PIN_MAP[pin_mb];
   pthread_mutex_lock(&code_lock);
-  get_gpio_pin(pin_int).set_input_voltage(voltage->as.number);
+  get_gpio_pin(pin_nrf).set_input_voltage(voltage->as.number);
   pthread_mutex_unlock(&code_lock);
 }
 
