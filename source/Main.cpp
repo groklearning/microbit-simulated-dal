@@ -436,29 +436,25 @@ process_client_magnet(const json_value* data) {
 }
 
 // Pin updates are formatted as:
-// { a: [<voltage>, ...] }
+// { "pin": N, "voltage": V }
 // The voltage can be 'null' for disconnected.
 void
 process_client_pins(const json_value* data) {
-  const json_value* analog_values = json_value_get(data, "a");
-  if (!analog_values || analog_values->type != JSON_VALUE_TYPE_ARRAY) {
-    fprintf(stderr, "Pin analog values missing.\n");
+  const json_value* pin = json_value_get(data, "pin");
+  const json_value* voltage = json_value_get(data, "pin");
+  if (!pin || !voltage || pin->type != JSON_VALUE_TYPE_NUMBER || voltage->type != JSON_VALUE_TYPE_NUMBER) {
+    fprintf(stderr, "Pin number or voltage missing.\n");
+    return;
+  }
+
+  int pin_int = uint32_t(pin->as.number);
+  if (pin_int > 20) {
+    fprintf(stderr, "Invalid pin number.\n");
     return;
   }
 
   pthread_mutex_lock(&code_lock);
-
-  int i = 0;
-  const json_value_list* pin = analog_values->as.pairs;
-  while (pin && i <= 20) {
-    if (pin->value->type != JSON_VALUE_TYPE_NULL) {
-      double a = pin->value->as.number;
-      get_gpio_pin(i).set_input_voltage(a);
-    }
-    pin = pin->next;
-    ++i;
-  }
-
+  get_gpio_pin(pin_int).set_input_voltage(voltage->as.number);
   pthread_mutex_unlock(&code_lock);
 }
 
@@ -491,7 +487,7 @@ process_client_json(const json_value* json) {
       } else if (strncmp(event_type->as.string, "microbit_magnet", 15) == 0) {
         // Compass values change.
         process_client_magnet(event_data);
-      } else if (strncmp(event_type->as.string, "microbit_pins", 13) == 0) {
+      } else if (strncmp(event_type->as.string, "microbit_pin", 13) == 0) {
         // Something driving the GPIO pins.
         process_client_pins(event_data);
       } else {
