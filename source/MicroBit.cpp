@@ -39,18 +39,19 @@
 
 #include "serial_api.h"
 
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/time.h>
 #include <sys/types.h>
 #include <time.h>
 #include <unistd.h>
-#include <math.h>
 
 #include "Hardware.h"
 
 // MicroBitAccelerometer.h
-MicroBitAccelerometer::MicroBitAccelerometer(uint16_t id, uint16_t address) : sample(), int1(MICROBIT_PIN_ACCEL_DATA_READY) {
+MicroBitAccelerometer::MicroBitAccelerometer(uint16_t id, uint16_t address)
+    : sample(), int1(MICROBIT_PIN_ACCEL_DATA_READY) {
 }
 MicroBitAccelerometer::~MicroBitAccelerometer() {
 }
@@ -62,15 +63,43 @@ MicroBitAccelerometer::update() {
 }
 int
 MicroBitAccelerometer::getX(MicroBitCoordinateSystem system) {
-  return sample.x;
+  switch (system) {
+    case SIMPLE_CARTESIAN:
+      return -sample.x;
+
+    case NORTH_EAST_DOWN:
+      return sample.y;
+
+    case RAW:
+    default:
+      return sample.x;
+  }
 }
 int
 MicroBitAccelerometer::getY(MicroBitCoordinateSystem system) {
-  return sample.y;
+  switch (system) {
+    case SIMPLE_CARTESIAN:
+      return -sample.y;
+
+    case NORTH_EAST_DOWN:
+      return -sample.x;
+
+    case RAW:
+    default:
+      return sample.y;
+  }
 }
 int
 MicroBitAccelerometer::getZ(MicroBitCoordinateSystem system) {
-  return sample.z;
+  switch (system) {
+    case NORTH_EAST_DOWN:
+      return -sample.z;
+
+    case SIMPLE_CARTESIAN:
+    case RAW:
+    default:
+      return sample.z;
+  }
 }
 BasicGesture
 MicroBitAccelerometer::getGesture() {
@@ -106,7 +135,8 @@ MicroBitAccelerometer::getPitchRadians() {
 }
 
 // MicroBitCompass.h
-MicroBitCompass::MicroBitCompass(uint16_t id, uint16_t address) : average(), sample(), int1(MICROBIT_PIN_COMPASS_DATA_READY) {
+MicroBitCompass::MicroBitCompass(uint16_t id, uint16_t address)
+    : average(), sample(), int1(MICROBIT_PIN_COMPASS_DATA_READY) {
 }
 MicroBitCompass::~MicroBitCompass() {
 }
@@ -130,22 +160,25 @@ MicroBitCompass::heading() {
   // Precompute the tilt compensation parameters to improve readability.
   float phi = uBit.accelerometer.getRollRadians();
   float theta = uBit.accelerometer.getPitchRadians();
-  float x = (float) getX(SIMPLE_CARTESIAN);
-  float y = (float) getY(SIMPLE_CARTESIAN);
-  float z = (float) getZ(SIMPLE_CARTESIAN);
+  float x = (float)getX(NORTH_EAST_DOWN);
+  float y = (float)getY(NORTH_EAST_DOWN);
+  float z = (float)getZ(NORTH_EAST_DOWN);
 
-  // Precompute cos and sin of pitch and roll angles to make the calculation a little more efficient.
+  // Precompute cos and sin of pitch and roll angles to make the calculation a little more
+  // efficient.
   float sinPhi = sin(phi);
   float cosPhi = cos(phi);
   float sinTheta = sin(theta);
   float cosTheta = cos(theta);
 
-  float bearing = (360*atan2(z*sinPhi - y*cosPhi, x*cosTheta + y*sinTheta*sinPhi + z*sinTheta*cosPhi)) / (2*PI);
+  float bearing = (360 * atan2(z * sinPhi - y * cosPhi,
+                               x * cosTheta + y * sinTheta * sinPhi + z * sinTheta * cosPhi)) /
+                  (2 * PI);
 
   if (bearing < 0)
     bearing += 360.0;
 
-  return (int) bearing;
+  return (int)bearing;
 }
 int
 MicroBitCompass::whoAmI() {
@@ -153,15 +186,46 @@ MicroBitCompass::whoAmI() {
 }
 int
 MicroBitCompass::getX(MicroBitCoordinateSystem system) {
-  return sample.x;
+  switch (system)
+    {
+        case SIMPLE_CARTESIAN:
+            return sample.x;
+
+        case NORTH_EAST_DOWN:
+            return -sample.y;
+
+        case RAW:
+        default:
+            return sample.x;
+    }
 }
 int
 MicroBitCompass::getY(MicroBitCoordinateSystem system) {
-  return sample.y;
+  switch (system)
+    {
+        case SIMPLE_CARTESIAN:
+            return -sample.y;
+
+        case NORTH_EAST_DOWN:
+            return sample.x;
+
+        case RAW:
+        default:
+            return sample.y;
+    }
 }
 int
 MicroBitCompass::getZ(MicroBitCoordinateSystem system) {
-  return sample.z;
+  switch (system)
+    {
+        case SIMPLE_CARTESIAN:
+        case NORTH_EAST_DOWN:
+            return -sample.z;
+
+        case RAW:
+        default:
+            return sample.z;
+    }
 }
 int
 MicroBitCompass::getFieldStrength() {
@@ -169,7 +233,7 @@ MicroBitCompass::getFieldStrength() {
   double y = getY();
   double z = getZ();
 
-  return (int) sqrt(x*x + y*y + z*z);
+  return (int)sqrt(x * x + y * y + z * z);
 }
 int
 MicroBitCompass::readTemperature() {
@@ -237,10 +301,11 @@ MicroBit::MicroBit()
       accelerometer(MICROBIT_ID_ACCELEROMETER, MMA8653_DEFAULT_ADDR),
       compass(MICROBIT_ID_COMPASS, MAG3110_DEFAULT_ADDR),
       thermometer(MICROBIT_ID_THERMOMETER),
-      io(MICROBIT_ID_IO_P0, MICROBIT_ID_IO_P1, MICROBIT_ID_IO_P2, MICROBIT_ID_IO_P3, MICROBIT_ID_IO_P4, MICROBIT_ID_IO_P5,
-         MICROBIT_ID_IO_P6, MICROBIT_ID_IO_P7, MICROBIT_ID_IO_P8, MICROBIT_ID_IO_P9, MICROBIT_ID_IO_P10, MICROBIT_ID_IO_P11,
-         MICROBIT_ID_IO_P12, MICROBIT_ID_IO_P13, MICROBIT_ID_IO_P14, MICROBIT_ID_IO_P15, MICROBIT_ID_IO_P16, MICROBIT_ID_IO_P19,
-         MICROBIT_ID_IO_P20) {
+      io(MICROBIT_ID_IO_P0, MICROBIT_ID_IO_P1, MICROBIT_ID_IO_P2, MICROBIT_ID_IO_P3,
+         MICROBIT_ID_IO_P4, MICROBIT_ID_IO_P5, MICROBIT_ID_IO_P6, MICROBIT_ID_IO_P7,
+         MICROBIT_ID_IO_P8, MICROBIT_ID_IO_P9, MICROBIT_ID_IO_P10, MICROBIT_ID_IO_P11,
+         MICROBIT_ID_IO_P12, MICROBIT_ID_IO_P13, MICROBIT_ID_IO_P14, MICROBIT_ID_IO_P15,
+         MICROBIT_ID_IO_P16, MICROBIT_ID_IO_P19, MICROBIT_ID_IO_P20) {
   _boot_time = systemTime();
 }
 MicroBit::~MicroBit() {
@@ -355,11 +420,11 @@ MicroBit::getTickPeriod() {
 unsigned long
 MicroBit::systemTime() {
   // TODO(jim): In regular mode, sync to the system clock.
-  //struct timespec ts;
-  //clock_gettime(CLOCK_MONOTONIC_COARSE, &ts);
-  //unsigned long ms = ts.tv_sec * 1000;
-  //ms += ts.tv_nsec / 1000000ULL;
-  //return ms - _boot_time;
+  // struct timespec ts;
+  // clock_gettime(CLOCK_MONOTONIC_COARSE, &ts);
+  // unsigned long ms = ts.tv_sec * 1000;
+  // ms += ts.tv_nsec / 1000000ULL;
+  // return ms - _boot_time;
   unsigned long ms = get_macro_ticks() * 6;
   return ms - _boot_time;
 }
@@ -430,7 +495,8 @@ MicroBitMultiButton::onButtonEvent(MicroBitEvent evt) {
 }
 
 // MicroBitPin.h
-MicroBitPin::MicroBitPin(int id, PinName name, PinCapability capability) : capability(capability), name(name) {
+MicroBitPin::MicroBitPin(int id, PinName name, PinCapability capability)
+    : capability(capability), name(name) {
 }
 int
 MicroBitPin::setDigitalValue(int value) {
@@ -605,14 +671,15 @@ MicroBitThermometer::updateTemperature() {
 
 MicroBitI2C::MicroBitI2C(PinName sda, PinName scl) : I2C(sda, scl) {
 }
-MicroBitIO::MicroBitIO(int ID_P0, int ID_P1, int ID_P2, int ID_P3, int ID_P4, int ID_P5, int ID_P6, int ID_P7, int ID_P8, int ID_P9,
-                       int ID_P10, int ID_P11, int ID_P12, int ID_P13, int ID_P14, int ID_P15, int ID_P16, int ID_P19, int ID_P20)
+MicroBitIO::MicroBitIO(int ID_P0, int ID_P1, int ID_P2, int ID_P3, int ID_P4, int ID_P5, int ID_P6,
+                       int ID_P7, int ID_P8, int ID_P9, int ID_P10, int ID_P11, int ID_P12,
+                       int ID_P13, int ID_P14, int ID_P15, int ID_P16, int ID_P19, int ID_P20)
     : P0(ID_P0, MICROBIT_PIN_P0,
          PIN_CAPABILITY_ALL),  // P0 is the left most pad (ANALOG/DIGITAL/TOUCH)
       P1(ID_P1, MICROBIT_PIN_P1,
          PIN_CAPABILITY_ALL),  // P1 is the middle pad (ANALOG/DIGITAL/TOUCH)
       P2(ID_P2, MICROBIT_PIN_P2,
-         PIN_CAPABILITY_ALL),                                 // P2 is the right most pad (ANALOG/DIGITAL/TOUCH)
+         PIN_CAPABILITY_ALL),  // P2 is the right most pad (ANALOG/DIGITAL/TOUCH)
       P3(ID_P3, MICROBIT_PIN_P3, PIN_CAPABILITY_AD),          // COL1 (ANALOG/DIGITAL)
       P4(ID_P4, MICROBIT_PIN_P4, PIN_CAPABILITY_AD),          // COL2 (ANALOG/DIGITAL)
       P5(ID_P5, MICROBIT_PIN_P5, PIN_CAPABILITY_DIGITAL),     // BTN_A
