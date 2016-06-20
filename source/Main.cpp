@@ -482,10 +482,10 @@ process_client_json(const json_value* json) {
       if (strncmp(event_type->as.string, "microbit_button", 15) == 0) {
         // Button state change.
         process_client_button(event_data);
-      } else if (strncmp(event_type->as.string, "microbit_accel", 14) == 0) {
+      } else if (strncmp(event_type->as.string, "accelerometer", 13) == 0) {
         // Accelerometer values change.
         process_client_accel(event_data);
-      } else if (strncmp(event_type->as.string, "microbit_magnet", 15) == 0) {
+      } else if (strncmp(event_type->as.string, "magnetometer", 12) == 0) {
         // Compass values change.
         process_client_magnet(event_data);
       } else if (strncmp(event_type->as.string, "microbit_pin", 13) == 0) {
