@@ -63,6 +63,11 @@ volatile bool sigint_requested = false;
 // VM hasn't executed any instructions, then we shutdown.
 // Same goes for Ctrl-D.
 uint32_t signal_pending_since = 0;
+
+// The test script can only measure time passing by seeing pin/led changes or heartbeats.
+// The heartbeat allows it to measure time while the program isn't doing anything.
+// 10-tick heartbeats mean that we can measure microbit.sleep() to within 60ms.
+const uint32_t HEARTBEAT_TICKS = 10;
 }
 
 extern "C" {
@@ -704,7 +709,7 @@ main_thread(bool heartbeat_ticks, bool fast_mode, bool debug_mode) {
 
 	// Periodically heartbeat if the '-t' flag is enabled.
 	// This is useful for the marker to ensure that it sees an event at least every N ticks.
-	if (heartbeat_ticks && get_macro_ticks() >= last_heartbeat + 500) {
+	if (heartbeat_ticks && get_macro_ticks() >= last_heartbeat + HEARTBEAT_TICKS) {
 	  last_heartbeat = get_macro_ticks();
 	  write_heartbeat(updates_fd);
 	}
