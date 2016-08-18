@@ -15,6 +15,7 @@ extern "C" void app_main();
 #include <sys/timerfd.h>
 #include <sys/wait.h>
 #include <termios.h>
+#include <time.h>
 #include <unistd.h>
 
 #include <algorithm>
@@ -86,6 +87,13 @@ simulated_dal_micropy_vm_hook_loop() {
     shutdown = true;
     longjmp(code_quit_jmp, 1);
   }
+
+  // Sleep for a tiny amount of time so that tight loops don't use much CPU.
+  // This is essentially a yield() but also means we don't use any userspace CPU time.
+  struct timespec t;
+  t.tv_sec = 0;
+  t.tv_nsec = 25000;
+  nanosleep(&t, nullptr);
 
   pthread_mutex_lock(&code_lock);
 }
@@ -264,7 +272,7 @@ check_gpio_updates(int updates_fd) {
     snprintf(json_ptr, json_end - json_ptr, "}}]\n");
     json_ptr += strnlen(json_ptr, json_end - json_ptr);
 
-    write(updates_fd, json, json_ptr - json);
+    int status = write(updates_fd, json, json_ptr - json);
 
     memcpy(prev_pins, pins, sizeof(prev_pins));
     memcpy(prev_pwm_dutycycle, pwm_dutycycle, sizeof(prev_pwm_dutycycle));
@@ -327,7 +335,7 @@ check_led_updates(int updates_fd) {
     snprintf(json_ptr, json_end - json_ptr, "}}]\n");
     json_ptr += strnlen(json_ptr, json_end - json_ptr);
 
-    write(updates_fd, json, json_ptr - json);
+    int status = write(updates_fd, json, json_ptr - json);
   }
 }
 
@@ -359,7 +367,7 @@ write_heartbeat(int updates_fd) {
 	   "[{ \"type\": \"microbit_heartbeat\", \"ticks\": %d, \"data\": { \"real_ticks\": \"%d\" }}]\n", get_macro_ticks(), expected_macro_ticks());
   json_ptr += strnlen(json_ptr, json_end - json_ptr);
 
-  write(updates_fd, json, json_ptr - json);
+  int status = write(updates_fd, json, json_ptr - json);
 }
 
 void
@@ -372,7 +380,7 @@ write_event_ack(int updates_fd) {
 	   "[{ \"type\": \"microbit_ack\", \"ticks\": %d, \"data\": {}}]\n", get_macro_ticks());
   json_ptr += strnlen(json_ptr, json_end - json_ptr);
 
-  write(updates_fd, json, json_ptr - json);
+  int status = write(updates_fd, json, json_ptr - json);
 }
 
 // Button updates are formatted as:
@@ -701,7 +709,7 @@ main_thread(bool heartbeat_ticks, bool fast_mode, bool debug_mode) {
       } else if (events[n].data.fd == timer_fd) {
 	// Timer callback.
         uint64_t t;
-        read(timer_fd, &t, sizeof(uint64_t));
+        int status = read(timer_fd, &t, sizeof(uint64_t));
 
 	// Call the timer, telling it how many ticks have elapsed since the last call.
 	// It returns the number of ticks until the next call.
