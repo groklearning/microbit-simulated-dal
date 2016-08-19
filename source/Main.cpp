@@ -4,6 +4,7 @@ extern "C" void app_main();
 #include <fcntl.h>
 #include <limits.h>
 #include <pthread.h>
+#include <sched.h>
 #include <setjmp.h>
 #include <signal.h>
 #include <stdio.h>
@@ -34,7 +35,11 @@ extern "C" {
 namespace {
 // Used to wake up the code thread from __WFI.
 pthread_cond_t interrupt_signal;
-pthread_mutex_t interrupt_lock;
+pthread_mutex_t interrupt_signal_lock;
+
+volatile bool interrupt_waiting = false;
+pthread_cond_t interrupt_delivered;
+pthread_mutex_t interrupt_delivered_lock;
 
 // Used to provide mutex for all state accessed by both the micropython VM and the main
 // simulator thread.
@@ -67,7 +72,7 @@ uint32_t signal_pending_since = 0;
 
 // The test script can only measure time passing by seeing pin/led changes or heartbeats.
 // The heartbeat allows it to measure time while the program isn't doing anything.
-// 10-tick heartbeats mean that we can measure microbit.sleep() to within 60ms.
+// 10-tick heartbeats means the marker will be at most 60ms behind.
 const uint32_t HEARTBEAT_TICKS = 10;
 }
 
@@ -88,12 +93,17 @@ simulated_dal_micropy_vm_hook_loop() {
     longjmp(code_quit_jmp, 1);
   }
 
-  // Sleep for a tiny amount of time so that tight loops don't use much CPU.
-  // This is essentially a yield() but also means we don't use any userspace CPU time.
-  struct timespec t;
-  t.tv_sec = 0;
-  t.tv_nsec = 25000;
-  nanosleep(&t, nullptr);
+  // Every 100 branches, wait for a timer tick.
+  // Should be fairly unnoticable for most programs, but will prevent tight loops using
+  // ~any user CPU time.
+  static int n = 0;
+  n++;
+  if (n > 100) {
+    pthread_mutex_lock(&interrupt_signal_lock);
+    pthread_cond_wait(&interrupt_signal, &interrupt_signal_lock);
+    pthread_mutex_unlock(&interrupt_signal_lock);
+    n = 0;
+  }
 
   pthread_mutex_lock(&code_lock);
 }
@@ -117,9 +127,13 @@ __wait_for_interrupt() {
     sent_ctrl_d = true;
   }
 
-  pthread_mutex_lock(&interrupt_lock);
-  pthread_cond_wait(&interrupt_signal, &interrupt_lock);
-  pthread_mutex_unlock(&interrupt_lock);
+  // Wait for the interrupt signal, then let the signalling thread know that we're running.
+  pthread_mutex_lock(&interrupt_signal_lock);
+  interrupt_waiting = true;
+  pthread_cond_wait(&interrupt_signal, &interrupt_signal_lock);
+  interrupt_waiting = false;
+  pthread_cond_broadcast(&interrupt_delivered);
+  pthread_mutex_unlock(&interrupt_signal_lock);
 
   if (shutdown || get_reset_flag() || get_panic_flag() || get_disconnect_flag()) {
     shutdown = true;
@@ -144,9 +158,24 @@ namespace {
 // Unblock the VM if it's sitting in __WFI().
 void
 signal_interrupt() {
-  pthread_mutex_lock(&interrupt_lock);
-  pthread_cond_signal(&interrupt_signal);
-  pthread_mutex_unlock(&interrupt_lock);
+  bool wait_for_delivery = false;
+
+  // Signal the WFI thread.
+  pthread_mutex_lock(&interrupt_signal_lock);
+  wait_for_delivery = interrupt_waiting;
+  pthread_cond_broadcast(&interrupt_signal);
+  if (wait_for_delivery) {
+    // If the WFI thread was blocked on the signal, yield to it.
+    pthread_cond_wait(&interrupt_delivered, &interrupt_signal_lock);
+  }
+  pthread_mutex_unlock(&interrupt_signal_lock);
+
+  // Bounce the code lock to wait for any currently running code to go through the
+  // loop hook or WFI.
+  pthread_mutex_lock(&code_lock);
+  pthread_mutex_unlock(&code_lock);
+
+  sched_yield();
 }
 
 // Run the MicroPython VM.
@@ -358,13 +387,25 @@ expected_macro_ticks(bool reset = false) {
 
 void
 write_heartbeat(int updates_fd) {
-
   char json[1024];
   char* json_ptr = json;
   char* json_end = json + sizeof(json);
 
   snprintf(json_ptr, json_end - json_ptr,
 	   "[{ \"type\": \"microbit_heartbeat\", \"ticks\": %d, \"data\": { \"real_ticks\": \"%d\" }}]\n", get_macro_ticks(), expected_macro_ticks());
+  json_ptr += strnlen(json_ptr, json_end - json_ptr);
+
+  int status = write(updates_fd, json, json_ptr - json);
+}
+
+void
+write_bye(int updates_fd) {
+  char json[1024];
+  char* json_ptr = json;
+  char* json_end = json + sizeof(json);
+
+  snprintf(json_ptr, json_end - json_ptr,
+	   "[{ \"type\": \"microbit_bye\", \"ticks\": %d, \"data\": { \"real_ticks\": \"%d\" }}]\n", get_macro_ticks(), expected_macro_ticks());
   json_ptr += strnlen(json_ptr, json_end - json_ptr);
 
   int status = write(updates_fd, json, json_ptr - json);
@@ -747,10 +788,14 @@ main_thread(bool heartbeat_ticks, bool fast_mode, bool debug_mode) {
 	}
 
 	// Figure out how long to set the timerfd for. One tick is 16us.
-	// In fast mode, ignore how many ticks we need to sleep for, just sleep for 16us and report
-	// that we slept for the required amount.
 	uint32_t sleep_nsec = 16000;
-	if (!fast_mode) {
+	if (fast_mode) {
+	  // In fast mode, ignore how many ticks we need to sleep for, just sleep for 8 ticks
+	  // (8*16=128us) and report that we slept for the required amount.
+	  // i.e. fast mode is still 6000/128=~50x faster than regular mode.
+	  // Ideally what we want here is "sleep until the code thread is waiting for sleep".
+	  sleep_nsec *= 8;
+	} else {
 	  // Otherwise, in regular mode, sleep for 16us * required.
 	  sleep_nsec *= ticks_until_fire_timer;
 
@@ -775,6 +820,7 @@ main_thread(bool heartbeat_ticks, bool fast_mode, bool debug_mode) {
   // Keep running the timer for 20 more macro ticks (simulates ~120ms of time passing) so
   // that any pending LED and GPIO updates get sent out.
   fastforward_timer(20, updates_fd);
+  write_bye(updates_fd);
 
   signal_interrupt();
 
@@ -838,7 +884,9 @@ run_simulator(bool heartbeat_ticks, bool fast_mode, bool debug_mode) {
   // synchronizing access to state owned by the code thread (basically anything
   // in the microbit code and Hardware.cpp).
   pthread_cond_init(&interrupt_signal, NULL);
-  pthread_mutex_init(&interrupt_lock, NULL);
+  pthread_mutex_init(&interrupt_signal_lock, NULL);
+  pthread_cond_init(&interrupt_delivered, NULL);
+  pthread_mutex_init(&interrupt_delivered_lock, NULL);
   pthread_mutex_init(&code_lock, NULL);
 
   // Create threads.
@@ -861,7 +909,9 @@ run_simulator(bool heartbeat_ticks, bool fast_mode, bool debug_mode) {
 
   // Clean up mutexes / condvars and the starting script.
   pthread_cond_destroy(&interrupt_signal);
-  pthread_mutex_destroy(&interrupt_lock);
+  pthread_mutex_destroy(&interrupt_signal_lock);
+  pthread_cond_destroy(&interrupt_delivered);
+  pthread_mutex_destroy(&interrupt_delivered_lock);
   pthread_mutex_destroy(&code_lock);
 
   // If the reset flag is set, ask the parent loop to re-run.
