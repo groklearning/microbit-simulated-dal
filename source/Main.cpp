@@ -119,15 +119,19 @@ simulated_dal_micropy_vm_hook_loop() {
     if (fast_mode) {
       // In marking mode, fire the ticker every 100 branches.
       fast_mode_ticks_until_fire_timer = handle_timerfd_event(fast_mode_ticks_until_fire_timer);
-    } else {
-      // Every 100 branches, wait for a timer tick.
-      // Should be fairly unnoticable for most programs, but will prevent tight loops using
-      // ~any user CPU time.
-      pthread_mutex_lock(&interrupt_signal_lock);
-      pthread_cond_wait(&interrupt_signal, &interrupt_signal_lock);
-      pthread_mutex_unlock(&interrupt_signal_lock);
-      n = 0;
+      sched_yield();
     }
+
+    // Every 100 branches, wait for a timer tick.
+    // Should be fairly unnoticable for most programs, but will prevent tight loops using
+    // ~any user CPU time.
+    // While the marker is running (fast mode), this also enables the main thread to keep up with client events.
+    // fast_mode doesn't have the timer_fd, but on epoll timeout, it calls signal_interrupt which achieves
+    // the same thing.
+    pthread_mutex_lock(&interrupt_signal_lock);
+    pthread_cond_wait(&interrupt_signal, &interrupt_signal_lock);
+    pthread_mutex_unlock(&interrupt_signal_lock);
+    n = 0;
   }
 
   pthread_mutex_lock(&code_lock);
@@ -188,13 +192,9 @@ namespace {
 // Unblock the VM if it's sitting in __WFI().
 void
 signal_interrupt() {
-  if (fast_mode) {
-    return;
-  }
-
   bool wait_for_delivery = false;
 
-  // Signal the WFI thread.
+  // Signal the code thread which may be in WFI or the loop/branch hook.
   pthread_mutex_lock(&interrupt_signal_lock);
   wait_for_delivery = interrupt_waiting;
   pthread_cond_broadcast(&interrupt_signal);
@@ -733,17 +733,53 @@ main_thread() {
   // How long until we next need the timer callback to fire (in ticks).
   uint32_t ticks_until_fire_timer = 75;
 
+  int epoll_timeout = fast_mode ? 1 : 50;
+
   while (!shutdown) {
     struct epoll_event events[MAX_EVENTS];
-    int nfds = epoll_wait(epoll_fd, events, MAX_EVENTS, 100);
+    int nfds = epoll_wait(epoll_fd, events, MAX_EVENTS, epoll_timeout);
+
     if (nfds == -1) {
       if (errno == EINTR) {
 	// Timeout or interrupted.
+	// Allow the vm branch hook to proceed.
         // Continue so that we'll catch the shutdown flag above (if it's set, otherwise continue as normal).
         continue;
       }
       perror("epoll wait\n");
       exit(1);
+    }
+
+    // In all modes, make sure Ctrl-C is handled in a timely manner - see if our SIGINT handler has been called.
+    if (sigint_requested) {
+      sigint_requested = false;
+
+      // Deliver a Ctrl-C to the serial input.
+      pthread_mutex_lock(&code_lock);
+      serial_add_byte(0x03);
+      pthread_mutex_unlock(&code_lock);
+
+      // Make sure microbit-micropython does something with it.
+      signal_pending_since = get_macro_ticks();
+
+      // Let any code blocking on interrupts know there's serial data available.
+      signal_interrupt();
+    }
+    // And check how long it's been since we delivered a Ctrl-C or Ctrl-D.
+    if (signal_pending_since > 0 && signal_pending_since + 20 < get_macro_ticks()) {
+      // We attempted to deliver a Ctrl-C or Ctrl-D but code hasn't executed in the past
+      // 20 macro ticks, so it's probably stuck in the unhandled exception marquee display.
+      signal_pending_since = 0;
+      fastforward_timer(10000);
+    }
+
+    // Handle epoll timeout.
+    // In fast mode, use this to keep the code thread running by calling signal_interrupt().
+    // In other modes this never happens because the timer_fd fires more quickly than the epoll timeout.
+    if (nfds == 0) {
+      // Keep the code thread running.
+      signal_interrupt();
+      continue;
     }
 
     for (int n = 0; n < nfds; ++n) {
@@ -790,30 +826,6 @@ main_thread() {
 	// Call the timer, telling it how many ticks have elapsed since the last call.
 	// It returns the number of ticks until the next call.
 	ticks_until_fire_timer = handle_timerfd_event(ticks_until_fire_timer);
-
-	// See if our SIGINT handler has been called.
-	if (sigint_requested) {
-	  sigint_requested = false;
-
-	  // Deliver a Ctrl-C to the serial input.
-	  pthread_mutex_lock(&code_lock);
-	  serial_add_byte(0x03);
-	  pthread_mutex_unlock(&code_lock);
-
-	  // Make sure microbit-micropython does something with it.
-	  signal_pending_since = get_macro_ticks();
-
-	  // Let any code blocking on interrupts know there's serial data available.
-	  signal_interrupt();
-	}
-
-	// Check how long it's been since we delivered a Ctrl-C or Ctrl-D.
-	if (signal_pending_since > 0 && signal_pending_since + 20 < get_macro_ticks()) {
-	  // We attempted to deliver a Ctrl-C or Ctrl-D but code hasn't executed in the past
-	  // 20 macro ticks, so it's probably stuck in the unhandled exception marquee display.
-	  signal_pending_since = 0;
-	  fastforward_timer(10000);
-	}
 
 	// Figure out how long to set the timerfd for. One tick is 16us.
 	uint32_t sleep_nsec = 16000 * ticks_until_fire_timer;
