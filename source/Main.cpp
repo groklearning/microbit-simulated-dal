@@ -74,6 +74,26 @@ uint32_t signal_pending_since = 0;
 // The heartbeat allows it to measure time while the program isn't doing anything.
 // 10-tick heartbeats means the marker will be at most 60ms behind.
 const uint32_t HEARTBEAT_TICKS = 10;
+
+// For the marker, disable using the timer_fd and instead just advance the ticker whenever:
+//  - The micropython code calls WFI
+//  - Every 100 branches.
+bool fast_mode = false;
+
+// Log every HEARTBEAT_TICKS macro ticks (to keep the marker synchronized).
+bool heartbeat_mode = false;
+
+// File descriptor to write ___device_updates.
+int updates_fd = -1;
+
+// In fast mode, in either WFI or the branch hook, this is how many ticks the microbit ticker expected.
+uint32_t fast_mode_ticks_until_fire_timer = 75;
+
+// When did we last write a heartbeat, in macro ticks (if enabled in heartbeat_mode).
+uint32_t last_heartbeat = 0;
+
+uint32_t
+handle_timerfd_event(uint32_t ticks);
 }
 
 extern "C" {
@@ -93,16 +113,21 @@ simulated_dal_micropy_vm_hook_loop() {
     longjmp(code_quit_jmp, 1);
   }
 
-  // Every 100 branches, wait for a timer tick.
-  // Should be fairly unnoticable for most programs, but will prevent tight loops using
-  // ~any user CPU time.
   static int n = 0;
   n++;
   if (n > 100) {
-    pthread_mutex_lock(&interrupt_signal_lock);
-    pthread_cond_wait(&interrupt_signal, &interrupt_signal_lock);
-    pthread_mutex_unlock(&interrupt_signal_lock);
-    n = 0;
+    if (fast_mode) {
+      // In marking mode, fire the ticker every 100 branches.
+      fast_mode_ticks_until_fire_timer = handle_timerfd_event(fast_mode_ticks_until_fire_timer);
+    } else {
+      // Every 100 branches, wait for a timer tick.
+      // Should be fairly unnoticable for most programs, but will prevent tight loops using
+      // ~any user CPU time.
+      pthread_mutex_lock(&interrupt_signal_lock);
+      pthread_cond_wait(&interrupt_signal, &interrupt_signal_lock);
+      pthread_mutex_unlock(&interrupt_signal_lock);
+      n = 0;
+    }
   }
 
   pthread_mutex_lock(&code_lock);
@@ -127,13 +152,18 @@ __wait_for_interrupt() {
     sent_ctrl_d = true;
   }
 
-  // Wait for the interrupt signal, then let the signalling thread know that we're running.
-  pthread_mutex_lock(&interrupt_signal_lock);
-  interrupt_waiting = true;
-  pthread_cond_wait(&interrupt_signal, &interrupt_signal_lock);
-  interrupt_waiting = false;
-  pthread_cond_broadcast(&interrupt_delivered);
-  pthread_mutex_unlock(&interrupt_signal_lock);
+  if (fast_mode) {
+    // In fast mode, the most likely reason for WFI is waiting for the timer.
+    fast_mode_ticks_until_fire_timer = handle_timerfd_event(fast_mode_ticks_until_fire_timer);
+  } else {
+    // Wait for the interrupt signal, then let the signalling thread know that we're running.
+    pthread_mutex_lock(&interrupt_signal_lock);
+    interrupt_waiting = true;
+    pthread_cond_wait(&interrupt_signal, &interrupt_signal_lock);
+    interrupt_waiting = false;
+    pthread_cond_broadcast(&interrupt_delivered);
+    pthread_mutex_unlock(&interrupt_signal_lock);
+  }
 
   if (shutdown || get_reset_flag() || get_panic_flag() || get_disconnect_flag()) {
     shutdown = true;
@@ -158,6 +188,10 @@ namespace {
 // Unblock the VM if it's sitting in __WFI().
 void
 signal_interrupt() {
+  if (fast_mode) {
+    return;
+  }
+
   bool wait_for_delivery = false;
 
   // Signal the WFI thread.
@@ -247,7 +281,7 @@ list_to_json(const char* field, char** json_ptr, char* json_end, uint32_t* value
 // Pin states are in the GpioPinState enum in Hardware.h.
 // TODO(jim): Break this up into mode and value.
 void
-check_gpio_updates(int updates_fd) {
+check_gpio_updates() {
   static uint32_t prev_pins[23] = {0};
   static uint32_t prev_pwm_dutycycle[23] = {0};
   static uint32_t prev_pwm_period[23] = {0};
@@ -330,7 +364,7 @@ ticks_to_brightness(int ticks) {
 // complete frame. This will be a maximum of 375 ticks (1/3 of the time) - with three rows, a frame
 // takes 3 macro ticks (1125 ticks).
 void
-check_led_updates(int updates_fd) {
+check_led_updates() {
   uint32_t leds[25] = {0};
   static uint32_t leds1[25] = {INT_MAX};
   static uint32_t count = 0;
@@ -386,7 +420,7 @@ expected_macro_ticks(bool reset = false) {
 }
 
 void
-write_heartbeat(int updates_fd) {
+write_heartbeat() {
   char json[1024];
   char* json_ptr = json;
   char* json_end = json + sizeof(json);
@@ -399,7 +433,7 @@ write_heartbeat(int updates_fd) {
 }
 
 void
-write_bye(int updates_fd) {
+write_bye() {
   char json[1024];
   char* json_ptr = json;
   char* json_end = json + sizeof(json);
@@ -412,7 +446,7 @@ write_bye(int updates_fd) {
 }
 
 void
-write_event_ack(int updates_fd) {
+write_event_ack() {
   char json[1024];
   char* json_ptr = json;
   char* json_end = json + sizeof(json);
@@ -556,7 +590,7 @@ process_client_json(const json_value* json) {
 // Handle an epoll event from either the pipe or the file.
 // Each line of the file/pipe should be a JSON-formatted array of events.
 void
-process_client_event(int fd, int updates_fd) {
+process_client_event(int fd) {
   char buf[10240];
   ssize_t len = read(fd, buf, sizeof(buf));
   if (len == sizeof(buf)) {
@@ -572,7 +606,7 @@ process_client_event(int fd, int updates_fd) {
     json_value* json = json_parse_n(line_start, line_end - line_start);
     if (json) {
       process_client_json(json);
-      write_event_ack(updates_fd);
+      write_event_ack();
       json_value_destroy(json);
     } else {
       fprintf(stderr, "Invalid JSON\n");
@@ -591,7 +625,7 @@ process_client_event(int fd, int updates_fd) {
 // Takes the number of ticks since the last call, and returns the number of ticks
 // until the next call.
 uint32_t
-handle_timerfd_event(uint32_t ticks, int updates_fd) {
+handle_timerfd_event(uint32_t ticks) {
   static uint32_t macroticks_last_led_update = 0;
 
   pthread_mutex_lock(&code_lock);
@@ -601,9 +635,16 @@ handle_timerfd_event(uint32_t ticks, int updates_fd) {
   signal_interrupt();
 
   if (get_macro_ticks() != macroticks_last_led_update) {
-    check_led_updates(updates_fd);
-    check_gpio_updates(updates_fd);
+    check_led_updates();
+    check_gpio_updates();
     macroticks_last_led_update = get_macro_ticks();
+  }
+
+  // Periodically heartbeat if the '-t' flag is enabled.
+  // This is useful for the marker to ensure that it sees an event at least every N ticks.
+  if (heartbeat_mode && get_macro_ticks() >= last_heartbeat + HEARTBEAT_TICKS) {
+    last_heartbeat = get_macro_ticks();
+    write_heartbeat();
   }
 
   return ticks;
@@ -613,12 +654,12 @@ handle_timerfd_event(uint32_t ticks, int updates_fd) {
 // This is used to flush out any LED updates on shutdown, and to fastforward past
 // native code that is blocking a Ctrl-C being handled.
 void
-fastforward_timer(uint32_t ticks, int updates_fd) {
+fastforward_timer(uint32_t ticks) {
   uint32_t start_ticks = get_macro_ticks();
   uint32_t ticks_until_fire_timer = 75;
   while (get_macro_ticks() < start_ticks + ticks) {
     expected_macro_ticks(true);
-    ticks_until_fire_timer = handle_timerfd_event(ticks_until_fire_timer, updates_fd);
+    ticks_until_fire_timer = handle_timerfd_event(ticks_until_fire_timer);
   }
 }
 
@@ -633,15 +674,9 @@ fastforward_timer(uint32_t ticks, int updates_fd) {
 // So we provide the client events in the pipe as a backup. The Grok terminal uses the pipe, but the
 // file is useful for local testing. See utils/*.sh for scripts to generate events.
 void
-main_thread(bool heartbeat_ticks, bool fast_mode, bool debug_mode) {
+main_thread() {
   const int MAX_EVENTS = 10;
   int epoll_fd = epoll_create1(0);
-
-  int updates_fd = open("___device_updates", O_CREAT | O_TRUNC | O_WRONLY, S_IRUSR | S_IWUSR);
-
-  if (heartbeat_ticks) {
-    write_heartbeat(updates_fd);
-  }
 
   // Add non-blocking stdin to epoll set.
   struct epoll_event ev_stdin;
@@ -678,8 +713,10 @@ main_thread(bool heartbeat_ticks, bool fast_mode, bool debug_mode) {
   timer_spec.it_interval.tv_sec = 0;
   timer_spec.it_interval.tv_nsec = 0;
   timer_spec.it_value.tv_sec = 0;
-  timer_spec.it_value.tv_nsec = fast_mode ? 16000 : 16000 * 75;
-  timerfd_settime(timer_fd, 0, &timer_spec, NULL);
+  timer_spec.it_value.tv_nsec = 16000 * 75;
+  if (!fast_mode) {
+    timerfd_settime(timer_fd, 0, &timer_spec, NULL);
+  }
 
   // Open the events pipe.
   char* client_pipe_str = getenv("GROK_CLIENT_PIPE");
@@ -696,15 +733,13 @@ main_thread(bool heartbeat_ticks, bool fast_mode, bool debug_mode) {
   // How long until we next need the timer callback to fire (in ticks).
   uint32_t ticks_until_fire_timer = 75;
 
-  // When did we last write a heartbeat (if enabled).
-  uint32_t last_heartbeat = 0;
-
   while (!shutdown) {
     struct epoll_event events[MAX_EVENTS];
-    int nfds = epoll_wait(epoll_fd, events, MAX_EVENTS, -1);
+    int nfds = epoll_wait(epoll_fd, events, MAX_EVENTS, 100);
     if (nfds == -1) {
       if (errno == EINTR) {
-        // Continue so that we'll catch the shutdown flag above.
+	// Timeout or interrupted.
+        // Continue so that we'll catch the shutdown flag above (if it's set, otherwise continue as normal).
         continue;
       }
       perror("epoll wait\n");
@@ -741,12 +776,12 @@ main_thread(bool heartbeat_ticks, bool fast_mode, bool debug_mode) {
         for (uint8_t* p = buf; p < buf + len; p += sizeof(inotify_event) + event->len) {
           event = reinterpret_cast<inotify_event*>(p);
           if (event->wd == client_wd) {
-            process_client_event(client_fd, updates_fd);
+            process_client_event(client_fd);
           }
         }
       } else if (events[n].data.fd == client_pipe_fd) {
 	// A write happened to the client events pipe.
-        process_client_event(client_pipe_fd, updates_fd);
+        process_client_event(client_pipe_fd);
       } else if (events[n].data.fd == timer_fd) {
 	// Timer callback.
         uint64_t t;
@@ -754,14 +789,7 @@ main_thread(bool heartbeat_ticks, bool fast_mode, bool debug_mode) {
 
 	// Call the timer, telling it how many ticks have elapsed since the last call.
 	// It returns the number of ticks until the next call.
-	ticks_until_fire_timer = handle_timerfd_event(ticks_until_fire_timer, updates_fd);
-
-	// Periodically heartbeat if the '-t' flag is enabled.
-	// This is useful for the marker to ensure that it sees an event at least every N ticks.
-	if (heartbeat_ticks && get_macro_ticks() >= last_heartbeat + HEARTBEAT_TICKS) {
-	  last_heartbeat = get_macro_ticks();
-	  write_heartbeat(updates_fd);
-	}
+	ticks_until_fire_timer = handle_timerfd_event(ticks_until_fire_timer);
 
 	// See if our SIGINT handler has been called.
 	if (sigint_requested) {
@@ -784,31 +812,20 @@ main_thread(bool heartbeat_ticks, bool fast_mode, bool debug_mode) {
 	  // We attempted to deliver a Ctrl-C or Ctrl-D but code hasn't executed in the past
 	  // 20 macro ticks, so it's probably stuck in the unhandled exception marquee display.
 	  signal_pending_since = 0;
-	  fastforward_timer(10000, updates_fd);
+	  fastforward_timer(10000);
 	}
 
 	// Figure out how long to set the timerfd for. One tick is 16us.
-	uint32_t sleep_nsec = 16000;
-	if (fast_mode) {
-	  // In fast mode, ignore how many ticks we need to sleep for, just sleep for 8 ticks
-	  // (8*16=128us) and report that we slept for the required amount.
-	  // i.e. fast mode is still 6000/128=~50x faster than regular mode.
-	  // Ideally what we want here is "sleep until the code thread is waiting for sleep".
-	  sleep_nsec *= 8;
-	} else {
-	  // Otherwise, in regular mode, sleep for 16us * required.
-	  sleep_nsec *= ticks_until_fire_timer;
+	uint32_t sleep_nsec = 16000 * ticks_until_fire_timer;
 
-	  // But scale so that we converge on 'real' time.
-	  uint32_t e = expected_macro_ticks();
-	  if (get_macro_ticks() > e) {
-	    sleep_nsec = (sleep_nsec * 11) / 10;
-	  } else if (get_macro_ticks() < e) {
-	    uint32_t d = std::min(9U, e - get_macro_ticks());
-	    sleep_nsec = (sleep_nsec * (10-d)) / 10;
-	  }
+	// But scale so that we converge on 'real' time.
+	uint32_t e = expected_macro_ticks();
+	if (get_macro_ticks() > e) {
+	  sleep_nsec = (sleep_nsec * 11) / 10;
+	} else if (get_macro_ticks() < e) {
+	  uint32_t d = std::min(9U, e - get_macro_ticks());
+	  sleep_nsec = (sleep_nsec * (10-d)) / 10;
 	}
-
 
 	// Reset the timer_fd.
         timer_spec.it_value.tv_nsec = sleep_nsec;
@@ -819,15 +836,14 @@ main_thread(bool heartbeat_ticks, bool fast_mode, bool debug_mode) {
 
   // Keep running the timer for 20 more macro ticks (simulates ~120ms of time passing) so
   // that any pending LED and GPIO updates get sent out.
-  fastforward_timer(20, updates_fd);
-  write_bye(updates_fd);
+  fastforward_timer(20);
+  write_bye();
 
   signal_interrupt();
 
   close(notify_fd);
   close(client_fd);
   close(timer_fd);
-  close(updates_fd);
 }
 
 // Makes STDIN non-blocking.
@@ -863,7 +879,7 @@ handle_sigint(int sig) {
 const int SIMULATOR_RESET = 99;
 
 int
-run_simulator(bool heartbeat_ticks, bool fast_mode, bool debug_mode) {
+run_simulator() {
   // Emulate the pull-ups on the button pins.
   // Note: MicroBitButton floats the pin on creation, but MicroBitPin doesn't
   // change the mode until the first read() (to PullDown).
@@ -889,6 +905,12 @@ run_simulator(bool heartbeat_ticks, bool fast_mode, bool debug_mode) {
   pthread_mutex_init(&interrupt_delivered_lock, NULL);
   pthread_mutex_init(&code_lock, NULL);
 
+  updates_fd = open("___device_updates", O_CREAT | O_TRUNC | O_WRONLY, S_IRUSR | S_IWUSR);
+
+  if (heartbeat_mode) {
+    write_heartbeat();
+  }
+
   // Create threads.
   typedef void* (*thread_start_fn)(void*);
   thread_start_fn thread_fns[] = {&code_thread};
@@ -899,13 +921,15 @@ run_simulator(bool heartbeat_ticks, bool fast_mode, bool debug_mode) {
   }
 
   // Run the main thread (on the main thread).
-  main_thread(heartbeat_ticks, fast_mode, debug_mode);
+  main_thread();
 
   // After main terminates, join on all other threads.
   for (int i = 0; i < NUM_THREADS; ++i) {
     void* result;
     pthread_join(threads[i], &result);
   }
+
+  close(updates_fd);
 
   // Clean up mutexes / condvars and the starting script.
   pthread_cond_destroy(&interrupt_signal);
@@ -957,8 +981,6 @@ main(int argc, char** argv) {
   // if nothing specified.
   char script[MAX_SCRIPT_SIZE] = "from microbit import *\n";
   bool interactive_override = false;
-  bool heartbeat_ticks = false;
-  bool fast_mode = false;
   bool debug_mode = false;
   bool script_loaded = false;
 
@@ -968,7 +990,7 @@ main(int argc, char** argv) {
 	if (argv[i][1] == 'i') {
 	  interactive_override = true;
 	} else if (argv[i][1] == 't') {
-	  heartbeat_ticks = true;
+	  heartbeat_mode = true;
 	} else if (argv[i][1] == 'f') {
 	  fast_mode = true;
 	} else if (argv[i][1] == 'd') {
@@ -1008,7 +1030,7 @@ main(int argc, char** argv) {
   int status = 0;
 
   if (debug_mode) {
-    run_simulator(heartbeat_ticks, fast_mode, debug_mode);
+    run_simulator();
   } else {
     // Micropython provides a 'reset()' method that restarts the simulation.
     // Easiest way to do that is to fork() the simulation and just start a new one when it
@@ -1022,7 +1044,7 @@ main(int argc, char** argv) {
         // Child. Return directly from main().
 	// If the parent gets killed, term.
 	prctl(PR_SET_PDEATHSIG, SIGKILL);
-        return run_simulator(heartbeat_ticks, fast_mode, false);
+        return run_simulator();
       } else {
         // Parent. Block until the child exits.
         int wstatus = 0;
