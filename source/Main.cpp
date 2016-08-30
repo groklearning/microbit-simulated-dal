@@ -41,6 +41,8 @@ volatile bool interrupt_waiting = false;
 pthread_cond_t interrupt_delivered;
 pthread_mutex_t interrupt_delivered_lock;
 
+pthread_mutex_t updates_file_lock;
+
 // Used to provide mutex for all state accessed by both the micropython VM and the main
 // simulator thread.
 pthread_mutex_t code_lock;
@@ -335,7 +337,9 @@ check_gpio_updates() {
     snprintf(json_ptr, json_end - json_ptr, "}}]\n");
     json_ptr += strnlen(json_ptr, json_end - json_ptr);
 
+    pthread_mutex_lock(&updates_file_lock);
     int status = write(updates_fd, json, json_ptr - json);
+    pthread_mutex_unlock(&updates_file_lock);
 
     memcpy(prev_pins, pins, sizeof(prev_pins));
     memcpy(prev_pwm_dutycycle, pwm_dutycycle, sizeof(prev_pwm_dutycycle));
@@ -398,7 +402,9 @@ check_led_updates() {
     snprintf(json_ptr, json_end - json_ptr, "}}]\n");
     json_ptr += strnlen(json_ptr, json_end - json_ptr);
 
+    pthread_mutex_lock(&updates_file_lock);
     int status = write(updates_fd, json, json_ptr - json);
+    pthread_mutex_unlock(&updates_file_lock);
   }
 }
 
@@ -429,7 +435,9 @@ write_heartbeat() {
 	   "[{ \"type\": \"microbit_heartbeat\", \"ticks\": %d, \"data\": { \"real_ticks\": \"%d\" }}]\n", get_macro_ticks(), expected_macro_ticks());
   json_ptr += strnlen(json_ptr, json_end - json_ptr);
 
+  pthread_mutex_lock(&updates_file_lock);
   int status = write(updates_fd, json, json_ptr - json);
+  pthread_mutex_unlock(&updates_file_lock);
 }
 
 void
@@ -442,7 +450,9 @@ write_bye() {
 	   "[{ \"type\": \"microbit_bye\", \"ticks\": %d, \"data\": { \"real_ticks\": \"%d\" }}]\n", get_macro_ticks(), expected_macro_ticks());
   json_ptr += strnlen(json_ptr, json_end - json_ptr);
 
+  pthread_mutex_lock(&updates_file_lock);
   int status = write(updates_fd, json, json_ptr - json);
+  pthread_mutex_unlock(&updates_file_lock);
 }
 
 void
@@ -455,7 +465,9 @@ write_event_ack() {
 	   "[{ \"type\": \"microbit_ack\", \"ticks\": %d, \"data\": {}}]\n", get_macro_ticks());
   json_ptr += strnlen(json_ptr, json_end - json_ptr);
 
+  pthread_mutex_lock(&updates_file_lock);
   int status = write(updates_fd, json, json_ptr - json);
+  pthread_mutex_unlock(&updates_file_lock);
 }
 
 // Button updates are formatted as:
@@ -917,6 +929,7 @@ run_simulator() {
   pthread_mutex_init(&interrupt_delivered_lock, NULL);
   pthread_mutex_init(&code_lock, NULL);
 
+  pthread_mutex_init(&updates_file_lock, NULL);
   updates_fd = open("___device_updates", O_CREAT | O_TRUNC | O_WRONLY, S_IRUSR | S_IWUSR);
 
   if (heartbeat_mode) {
@@ -942,6 +955,7 @@ run_simulator() {
   }
 
   close(updates_fd);
+  pthread_mutex_destroy(&updates_file_lock);
 
   // Clean up mutexes / condvars and the starting script.
   pthread_cond_destroy(&interrupt_signal);
