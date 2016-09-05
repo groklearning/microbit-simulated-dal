@@ -50,6 +50,9 @@ pthread_mutex_t code_lock;
 // Set to cleanly shutdown the simulator.
 volatile bool shutdown = false;
 
+// Set to disable checking led/gpio state (e.g. while fastforwarding time waiting for a Ctrl-C to be handled).
+volatile bool suppress_pin_led_updates = false;
+
 jmp_buf code_quit_jmp;
 
 // In interactive mode, we let the default behavior happen (microbit-micropython runs the
@@ -288,6 +291,10 @@ check_gpio_updates() {
   static uint32_t prev_pwm_dutycycle[23] = {0};
   static uint32_t prev_pwm_period[23] = {0};
 
+  if (suppress_pin_led_updates) {
+    return;
+  }
+
   pthread_mutex_lock(&code_lock);
 
   uint32_t pins[23] = {0};
@@ -372,6 +379,10 @@ check_led_updates() {
   uint32_t leds[25] = {0};
   static uint32_t leds1[25] = {INT_MAX};
   static uint32_t count = 0;
+
+  if (suppress_pin_led_updates) {
+    return;
+  }
 
   // Get the LED brightness, and convert to our 0-9 scale.
   pthread_mutex_lock(&code_lock);
@@ -666,10 +677,13 @@ handle_timerfd_event(uint32_t ticks) {
 // This is used to flush out any LED updates on shutdown, and to fastforward past
 // native code that is blocking a Ctrl-C being handled.
 void
-fastforward_timer(uint32_t ticks) {
+fastforward_timer(uint32_t ticks, bool stop_on_shutdown) {
   uint32_t start_ticks = get_macro_ticks();
   uint32_t ticks_until_fire_timer = 75;
   while (get_macro_ticks() < start_ticks + ticks) {
+    if (stop_on_shutdown && shutdown) {
+      return;
+    }
     expected_macro_ticks(true);
     ticks_until_fire_timer = handle_timerfd_event(ticks_until_fire_timer);
   }
@@ -782,7 +796,9 @@ main_thread() {
       // We attempted to deliver a Ctrl-C or Ctrl-D but code hasn't executed in the past
       // 20 macro ticks, so it's probably stuck in the unhandled exception marquee display.
       signal_pending_since = 0;
-      fastforward_timer(10000);
+      suppress_pin_led_updates = true;
+      fastforward_timer(10000, true);
+      suppress_pin_led_updates = false;
     }
 
     // Handle epoll timeout.
@@ -860,7 +876,7 @@ main_thread() {
 
   // Keep running the timer for 20 more macro ticks (simulates ~120ms of time passing) so
   // that any pending LED and GPIO updates get sent out.
-  fastforward_timer(20);
+  fastforward_timer(20, false);
   write_bye();
 
   signal_interrupt();
