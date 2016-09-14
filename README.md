@@ -1,6 +1,7 @@
 # microbit-simulated-dal
 Simulated implementation of https://github.com/lancaster-university/microbit-dal/ for Grok
 
+Initial setup:
 ```bash
 # Clone our fork of bbcmicrobit/micropython and the simulated DAL.
 cd ~/repos
@@ -30,9 +31,24 @@ yotta clean
 yotta build
 ```
 
-To copy the built simulator to marker/terminal.
+To copy the built simulator to marker/terminal:
 ```bash
 sudo mkdir -p /markers/sandbox/opt/grok/devices/microbit
 sudo chmod 0311 /markers/sandbox/opt/grok/devices/microbit
 sudo cp build/x86-linux-native-32bit/source/microbit-micropython /markers/sandbox/opt/grok/devices/microbit
+```
+
+Development cycle:
+```bash
+yotta build
+sudo cp build/x86-linux-native-32bit/source/microbit-micropython /markers/sandbox/opt/grok/devices/microbit
+```
+
+To pull changes from upstream:
+```bash
+git remote add upstream git@github.com:bbcmicrobit/micropython.git
+git fetch upstream
+git merge upstream/master
+yotta clean
+yotta build
 ```
