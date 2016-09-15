@@ -2,6 +2,7 @@
 #define __HARDWARE_H
 
 #include <stddef.h>
+#include <stdint.h>
 
 // This file is the interface between the mock implementation of the micro:bit DAL
 // and the event loop in Main.cpp.
