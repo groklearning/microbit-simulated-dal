@@ -369,16 +369,13 @@ ticks_to_brightness(int ticks) {
 
 // Called periodically (currently every macro tick) to send LED matrix changes back
 // to the client.
-// Sometimes it takes a few frames to stabilize (i.e. if an image change occurs mid-frame), so we
-// require at least 3 identical frames before sending to the client.
 // The DisplayLed class returns brightness() as a number of ticks that it was turned on for the last
 // complete frame. This will be a maximum of 375 ticks (1/3 of the time) - with three rows, a frame
 // takes 3 macro ticks (1125 ticks).
 void
 check_led_updates() {
   uint32_t leds[25] = {0};
-  static uint32_t leds1[25] = {INT_MAX};
-  static uint32_t count = 0;
+  static uint32_t leds_prev[25] = {INT_MAX};
 
   if (suppress_pin_led_updates) {
     return;
@@ -391,16 +388,8 @@ check_led_updates() {
   }
   pthread_mutex_unlock(&code_lock);
 
-  // Update count (the number of identical frames we've seen).
-  if (memcmp(leds, leds1, sizeof(leds)) == 0) {
-    ++count;
-  } else {
-    count = 0;
-    memcpy(leds1, leds, sizeof(leds));
-  }
-
-  // If we see three, send it to the client.
-  if (count == 3) {
+  // If it's changed since the last update, send update.
+  if (memcmp(leds, leds_prev, sizeof(leds)) != 0) {
     char json[1024];
     char* json_ptr = json;
     char* json_end = json + sizeof(json);
@@ -416,6 +405,8 @@ check_led_updates() {
     pthread_mutex_lock(&updates_file_lock);
     int status = write(updates_fd, json, json_ptr - json);
     pthread_mutex_unlock(&updates_file_lock);
+
+    memcpy(leds_prev, leds, sizeof(leds));
   }
 }
 
