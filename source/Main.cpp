@@ -797,7 +797,9 @@ main_thread() {
     // In other modes this never happens because the timer_fd fires more quickly than the epoll timeout.
     if (nfds == 0) {
       // Keep the code thread running.
-      signal_interrupt();
+      for (int i = 0; i < 100; ++i) {
+	signal_interrupt();
+      }
       continue;
     }
 
