@@ -43,6 +43,12 @@ pthread_mutex_t interrupt_delivered_lock;
 
 pthread_mutex_t updates_file_lock;
 
+// In fast mode, every time we write a client update, we go to sleep until the marker
+// resumes via a client event.
+// Writing to the updates file locks this, and progress on the code thread blocks on it.
+pthread_mutex_t suspend_lock;
+volatile bool suspend = false;
+
 // Used to provide mutex for all state accessed by both the micropython VM and the main
 // simulator thread.
 pthread_mutex_t code_lock;
@@ -124,18 +130,27 @@ simulated_dal_micropy_vm_hook_loop() {
     if (fast_mode) {
       // In marking mode, fire the ticker every 100 branches.
       fast_mode_ticks_until_fire_timer = handle_timerfd_event(fast_mode_ticks_until_fire_timer);
-      sched_yield();
-    }
 
-    // Every 100 branches, wait for a timer tick.
-    // Should be fairly unnoticable for most programs, but will prevent tight loops using
-    // ~any user CPU time.
-    // While the marker is running (fast mode), this also enables the main thread to keep up with client events.
-    // fast_mode doesn't have the timer_fd, but on epoll timeout, it calls signal_interrupt which achieves
-    // the same thing.
-    pthread_mutex_lock(&interrupt_signal_lock);
-    pthread_cond_wait(&interrupt_signal, &interrupt_signal_lock);
-    pthread_mutex_unlock(&interrupt_signal_lock);
+      while (true) {
+	pthread_mutex_lock(&suspend_lock);
+	bool b = suspend;
+	pthread_mutex_unlock(&suspend_lock);
+	if (!b) {
+	  break;
+	}
+	usleep(100);
+      }
+    } else {
+      // Every 100 branches, wait for a timer tick.
+      // Should be fairly unnoticable for most programs, but will prevent tight loops using
+      // ~any user CPU time.
+      // While the marker is running (fast mode), this also enables the main thread to keep up with client events.
+      // fast_mode doesn't have the timer_fd, but on epoll timeout, it calls signal_interrupt which achieves
+      // the same thing.
+      pthread_mutex_lock(&interrupt_signal_lock);
+      pthread_cond_wait(&interrupt_signal, &interrupt_signal_lock);
+      pthread_mutex_unlock(&interrupt_signal_lock);
+    }
     n = 0;
   }
 
@@ -163,7 +178,17 @@ __wait_for_interrupt() {
 
   if (fast_mode) {
     // In fast mode, the most likely reason for WFI is waiting for the timer.
+    // e.g. sleep() or synchronous music.
     fast_mode_ticks_until_fire_timer = handle_timerfd_event(fast_mode_ticks_until_fire_timer);
+    while (true) {
+      pthread_mutex_lock(&suspend_lock);
+      bool b = suspend;
+      pthread_mutex_unlock(&suspend_lock);
+      if (!b) {
+	break;
+      }
+      usleep(100);
+    }
   } else {
     // Wait for the interrupt signal, then let the signalling thread know that we're running.
     pthread_mutex_lock(&interrupt_signal_lock);
@@ -279,6 +304,17 @@ list_to_json(const char* field, char** json_ptr, char* json_end, uint32_t* value
   }
 }
 
+void write_to_updates(const void* buf, size_t count, bool should_suspend = false) {
+  pthread_mutex_lock(&updates_file_lock);
+  if (should_suspend && fast_mode) {
+    pthread_mutex_lock(&suspend_lock);
+    suspend = true;
+    pthread_mutex_unlock(&suspend_lock);
+  }
+  int status = write(updates_fd, buf, count);
+  pthread_mutex_unlock(&updates_file_lock);
+}
+
 // Called periodically (currently every macro tick) to send GPIO pin state back to the client.
 // We're less strict about waiting for changes to stabilize (compared to the LED matrix) because
 // we're not dealing with things like row/column scanning.
@@ -344,9 +380,7 @@ check_gpio_updates() {
     snprintf(json_ptr, json_end - json_ptr, "}}]\n");
     json_ptr += strnlen(json_ptr, json_end - json_ptr);
 
-    pthread_mutex_lock(&updates_file_lock);
-    int status = write(updates_fd, json, json_ptr - json);
-    pthread_mutex_unlock(&updates_file_lock);
+    write_to_updates(json, json_ptr - json, true);
 
     memcpy(prev_pins, pins, sizeof(prev_pins));
     memcpy(prev_pwm_dutycycle, pwm_dutycycle, sizeof(prev_pwm_dutycycle));
@@ -402,9 +436,7 @@ check_led_updates() {
     snprintf(json_ptr, json_end - json_ptr, "}}]\n");
     json_ptr += strnlen(json_ptr, json_end - json_ptr);
 
-    pthread_mutex_lock(&updates_file_lock);
-    int status = write(updates_fd, json, json_ptr - json);
-    pthread_mutex_unlock(&updates_file_lock);
+    write_to_updates(json, json_ptr - json, true);
 
     memcpy(leds_prev, leds, sizeof(leds));
   }
@@ -437,9 +469,7 @@ write_heartbeat() {
 	   "[{ \"type\": \"microbit_heartbeat\", \"ticks\": %d, \"data\": { \"real_ticks\": \"%d\" }}]\n", get_macro_ticks(), expected_macro_ticks());
   json_ptr += strnlen(json_ptr, json_end - json_ptr);
 
-  pthread_mutex_lock(&updates_file_lock);
-  int status = write(updates_fd, json, json_ptr - json);
-  pthread_mutex_unlock(&updates_file_lock);
+  write_to_updates(json, json_ptr - json, true);
 }
 
 void
@@ -452,9 +482,7 @@ write_bye() {
 	   "[{ \"type\": \"microbit_bye\", \"ticks\": %d, \"data\": { \"real_ticks\": \"%d\" }}]\n", get_macro_ticks(), expected_macro_ticks());
   json_ptr += strnlen(json_ptr, json_end - json_ptr);
 
-  pthread_mutex_lock(&updates_file_lock);
-  int status = write(updates_fd, json, json_ptr - json);
-  pthread_mutex_unlock(&updates_file_lock);
+  write_to_updates(json, json_ptr - json, false);
 }
 
 void
@@ -467,9 +495,7 @@ write_event_ack() {
 	   "[{ \"type\": \"microbit_ack\", \"ticks\": %d, \"data\": {}}]\n", get_macro_ticks());
   json_ptr += strnlen(json_ptr, json_end - json_ptr);
 
-  pthread_mutex_lock(&updates_file_lock);
-  int status = write(updates_fd, json, json_ptr - json);
-  pthread_mutex_unlock(&updates_file_lock);
+  write_to_updates(json, json_ptr - json, false);
 }
 
 // Button updates are formatted as:
@@ -500,6 +526,8 @@ process_client_button(const json_value* data) {
 
   // Make the code thread run with the new state.
   signal_interrupt();
+
+  write_event_ack();
 }
 
 // Accelerometer updates are formatted as:
@@ -522,6 +550,8 @@ process_client_accel(const json_value* data) {
 
   // Make the code thread run with the new state.
   signal_interrupt();
+
+  write_event_ack();
 }
 
 // Magnetometer updates are formatted as:
@@ -544,6 +574,8 @@ process_client_magnet(const json_value* data) {
 
   // Make the code thread run with the new state.
   signal_interrupt();
+
+  write_event_ack();
 }
 
 // Pin updates are formatted as:
@@ -571,6 +603,8 @@ process_client_pins(const json_value* data) {
 
   // Make the code thread run with the new state.
   signal_interrupt();
+
+  write_event_ack();
 }
 
 // Handle an array of json events that we read from the pipe/file.
@@ -593,7 +627,11 @@ process_client_json(const json_value* json) {
         event_data->type != JSON_VALUE_TYPE_OBJECT) {
       fprintf(stderr, "Event missing type and/or data.\n");
     } else {
-      if (strncmp(event_type->as.string, "microbit_button", 15) == 0) {
+      if (strncmp(event_type->as.string, "resume", 6) == 0) {
+	pthread_mutex_lock(&suspend_lock);
+	suspend = false;
+	pthread_mutex_unlock(&suspend_lock);
+      } else if (strncmp(event_type->as.string, "microbit_button", 15) == 0) {
         // Button state change.
         process_client_button(event_data);
       } else if (strncmp(event_type->as.string, "accelerometer", 13) == 0) {
@@ -632,7 +670,6 @@ process_client_event(int fd) {
     json_value* json = json_parse_n(line_start, line_end - line_start);
     if (json) {
       process_client_json(json);
-      write_event_ack();
       json_value_destroy(json);
     } else {
       fprintf(stderr, "Invalid JSON\n");
@@ -658,7 +695,9 @@ handle_timerfd_event(uint32_t ticks) {
   ticks = fire_ticker(ticks);
   pthread_mutex_unlock(&code_lock);
 
-  signal_interrupt();
+  if (!fast_mode) {
+    signal_interrupt();
+  }
 
   if (get_macro_ticks() != macroticks_last_led_update) {
     check_led_updates();
@@ -762,7 +801,7 @@ main_thread() {
   // How long until we next need the timer callback to fire (in ticks).
   uint32_t ticks_until_fire_timer = 75;
 
-  int epoll_timeout = fast_mode ? 1 : 50;
+  int epoll_timeout = fast_mode ? 50 : 50;
 
   while (!shutdown) {
     struct epoll_event events[MAX_EVENTS];
@@ -809,9 +848,7 @@ main_thread() {
     // In other modes this never happens because the timer_fd fires more quickly than the epoll timeout.
     if (nfds == 0) {
       // Keep the code thread running.
-      for (int i = 0; i < 100; ++i) {
-	signal_interrupt();
-      }
+      signal_interrupt();
       continue;
     }
 
@@ -951,7 +988,18 @@ run_simulator() {
   pthread_mutex_init(&code_lock, NULL);
 
   pthread_mutex_init(&updates_file_lock, NULL);
-  updates_fd = open("___device_updates", O_CREAT | O_TRUNC | O_WRONLY, S_IRUSR | S_IWUSR);
+
+  // Open the events pipe.
+  char* updates_pipe_str = getenv("GROK_UPDATES_PIPE");
+  if (updates_pipe_str != NULL) {
+    updates_fd = atoi(updates_pipe_str);
+  } else {
+    updates_fd = open("___device_updates", O_CREAT | O_TRUNC | O_WRONLY, S_IRUSR | S_IWUSR);
+  }
+
+  //pthread_mutexattr_init(&suspend_lock_attr);
+  //pthread_mutexattr_settype(&suspend_lock_attr, PTHREAD_MUTEX_RECURSIVE);
+  pthread_mutex_init(&suspend_lock, NULL);// &suspend_lock_attr);
 
   if (heartbeat_mode) {
     write_heartbeat();
@@ -974,6 +1022,9 @@ run_simulator() {
     void* result;
     pthread_join(threads[i], &result);
   }
+
+  pthread_mutex_destroy(&suspend_lock);
+  //pthread_mutexattr_destroy(&suspend_lock_attr);
 
   close(updates_fd);
   pthread_mutex_destroy(&updates_file_lock);
