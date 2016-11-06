@@ -497,6 +497,9 @@ process_client_button(const json_value* data) {
   get_gpio_pin(pin).set_input_voltage(v);
 
   pthread_mutex_unlock(&code_lock);
+
+  // Make the code thread run with the new state.
+  signal_interrupt();
 }
 
 // Accelerometer updates are formatted as:
@@ -516,6 +519,9 @@ process_client_accel(const json_value* data) {
   pthread_mutex_lock(&code_lock);
   set_accelerometer(x->as.number, y->as.number, z->as.number);
   pthread_mutex_unlock(&code_lock);
+
+  // Make the code thread run with the new state.
+  signal_interrupt();
 }
 
 // Magnetometer updates are formatted as:
@@ -535,6 +541,9 @@ process_client_magnet(const json_value* data) {
   pthread_mutex_lock(&code_lock);
   set_magnetometer(x->as.number, y->as.number, z->as.number);
   pthread_mutex_unlock(&code_lock);
+
+  // Make the code thread run with the new state.
+  signal_interrupt();
 }
 
 // Pin updates are formatted as:
@@ -559,6 +568,9 @@ process_client_pins(const json_value* data) {
   pthread_mutex_lock(&code_lock);
   get_gpio_pin(pin_nrf).set_input_voltage(voltage->as.number);
   pthread_mutex_unlock(&code_lock);
+
+  // Make the code thread run with the new state.
+  signal_interrupt();
 }
 
 // Handle an array of json events that we read from the pipe/file.
