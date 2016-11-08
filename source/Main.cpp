@@ -753,24 +753,6 @@ main_thread() {
   ev_stdin.data.fd = STDIN_FILENO;
   epoll_ctl(epoll_fd, EPOLL_CTL_ADD, STDIN_FILENO, &ev_stdin);
 
-  // Create and truncate the client events file.
-  int client_fd = open("___client_events", O_CREAT | O_TRUNC | O_RDONLY, S_IRUSR | S_IWUSR);
-
-  // Set up a notify for the file and add to epoll set.
-  struct epoll_event ev_client;
-  int notify_fd = inotify_init1(0);
-  int client_wd = inotify_add_watch(notify_fd, "___client_events", IN_MODIFY);
-  if (client_wd == -1) {
-    perror("add watch");
-    return;
-  }
-  ev_client.events = EPOLLIN;
-  ev_client.data.fd = notify_fd;
-  if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, notify_fd, &ev_client) == -1) {
-    perror("epoll_ctl");
-    return;
-  }
-
   // Set up a timer for the ticker.
   int timer_fd = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK);
   struct epoll_event ev_timer;
@@ -788,14 +770,34 @@ main_thread() {
 
   // Open the events pipe.
   char* client_pipe_str = getenv("GROK_CLIENT_PIPE");
-  int client_pipe_fd = -1;
+  int client_fd = -1;
+  int notify_fd = -1;
+  int client_wd = -1;
   if (client_pipe_str != NULL) {
-    client_pipe_fd = atoi(client_pipe_str);
-    fcntl(client_pipe_fd, F_SETFL, fcntl(client_pipe_fd, F_GETFL, 0) | O_NONBLOCK);
+    client_fd = atoi(client_pipe_str);
+    fcntl(client_fd, F_SETFL, fcntl(client_fd, F_GETFL, 0) | O_NONBLOCK);
     struct epoll_event ev_client_pipe;
     ev_client_pipe.events = EPOLLIN;
-    ev_client_pipe.data.fd = client_pipe_fd;
-    epoll_ctl(epoll_fd, EPOLL_CTL_ADD, client_pipe_fd, &ev_client_pipe);
+    ev_client_pipe.data.fd = client_fd;
+    epoll_ctl(epoll_fd, EPOLL_CTL_ADD, client_fd, &ev_client_pipe);
+  } else {
+    // Create and truncate the client events file.
+    client_fd = open("___client_events", O_CREAT | O_TRUNC | O_RDONLY, S_IRUSR | S_IWUSR);
+
+    // Set up a notify for the file and add to epoll set.
+    struct epoll_event ev_client;
+    notify_fd = inotify_init1(0);
+    client_wd = inotify_add_watch(notify_fd, "___client_events", IN_MODIFY);
+    if (client_wd == -1) {
+      perror("add watch");
+      return;
+    }
+    ev_client.events = EPOLLIN;
+    ev_client.data.fd = notify_fd;
+    if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, notify_fd, &ev_client) == -1) {
+      perror("epoll_ctl");
+      return;
+    }
   }
 
   // How long until we next need the timer callback to fire (in ticks).
@@ -870,7 +872,7 @@ main_thread() {
         }
         pthread_mutex_unlock(&code_lock);
         signal_interrupt();
-      } else if (events[n].data.fd == notify_fd) {
+      } else if (notify_fd != -1 && events[n].data.fd == notify_fd) {
 	// A change occured to the ___client_events file.
         uint8_t buf[4096] __attribute__((aligned(__alignof__(inotify_event))));
         ssize_t len = read(notify_fd, buf, sizeof(buf));
@@ -885,9 +887,9 @@ main_thread() {
             process_client_event(client_fd);
           }
         }
-      } else if (events[n].data.fd == client_pipe_fd) {
+      } else if (events[n].data.fd == client_fd) {
 	// A write happened to the client events pipe.
-        process_client_event(client_pipe_fd);
+        process_client_event(client_fd);
       } else if (events[n].data.fd == timer_fd) {
 	// Timer callback.
         uint64_t t;
@@ -923,7 +925,10 @@ main_thread() {
 
   signal_interrupt();
 
-  close(notify_fd);
+  if (notify_fd != -1) {
+    close(notify_fd);
+  }
+
   close(client_fd);
   close(timer_fd);
 }
