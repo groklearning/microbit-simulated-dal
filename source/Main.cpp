@@ -48,6 +48,7 @@ pthread_mutex_t updates_file_lock;
 // Writing to the updates file locks this, and progress on the code thread blocks on it.
 pthread_mutex_t suspend_lock;
 volatile bool suspend = false;
+pthread_cond_t suspend_wait;
 
 // Used to provide mutex for all state accessed by both the micropython VM and the main
 // simulator thread.
@@ -131,15 +132,11 @@ simulated_dal_micropy_vm_hook_loop() {
       // In marking mode, fire the ticker every 100 branches.
       fast_mode_ticks_until_fire_timer = handle_timerfd_event(fast_mode_ticks_until_fire_timer);
 
-      while (true) {
-	pthread_mutex_lock(&suspend_lock);
-	bool b = suspend;
-	pthread_mutex_unlock(&suspend_lock);
-	if (!b) {
-	  break;
-	}
-	usleep(100);
+      pthread_mutex_lock(&suspend_lock);
+      if (suspend) {
+	pthread_cond_wait(&suspend_wait, &suspend_lock);
       }
+      pthread_mutex_unlock(&suspend_lock);
     } else {
       // Every 100 branches, wait for a timer tick.
       // Should be fairly unnoticable for most programs, but will prevent tight loops using
@@ -180,15 +177,11 @@ __wait_for_interrupt() {
     // In fast mode, the most likely reason for WFI is waiting for the timer.
     // e.g. sleep() or synchronous music.
     fast_mode_ticks_until_fire_timer = handle_timerfd_event(fast_mode_ticks_until_fire_timer);
-    while (true) {
-      pthread_mutex_lock(&suspend_lock);
-      bool b = suspend;
-      pthread_mutex_unlock(&suspend_lock);
-      if (!b) {
-	break;
-      }
-      usleep(100);
+    pthread_mutex_lock(&suspend_lock);
+    if (suspend) {
+      pthread_cond_wait(&suspend_wait, &suspend_lock);
     }
+    pthread_mutex_unlock(&suspend_lock);
   } else {
     // Wait for the interrupt signal, then let the signalling thread know that we're running.
     pthread_mutex_lock(&interrupt_signal_lock);
@@ -530,6 +523,27 @@ process_client_button(const json_value* data) {
   write_event_ack();
 }
 
+// Temperature updates are formatted as:
+// { t: <number> }
+// The values correspond to the values read by temperature().
+void
+process_client_temperature(const json_value* data) {
+  const json_value* t = json_value_get(data, "t");
+  if (!t || t->type != JSON_VALUE_TYPE_NUMBER) {
+    fprintf(stderr, "Temperature event missing t.\n");
+    return;
+  }
+
+  pthread_mutex_lock(&code_lock);
+  set_temperature(t->as.number);
+  pthread_mutex_unlock(&code_lock);
+
+  // Make the code thread run with the new state.
+  signal_interrupt();
+
+  write_event_ack();
+}
+
 // Accelerometer updates are formatted as:
 // { x: <number>, y: <number>, z: <number> }
 // The values correspond to the values read by accelerometer.get_*().
@@ -630,10 +644,14 @@ process_client_json(const json_value* json) {
       if (strncmp(event_type->as.string, "resume", 6) == 0) {
 	pthread_mutex_lock(&suspend_lock);
 	suspend = false;
+	pthread_cond_broadcast(&suspend_wait);
 	pthread_mutex_unlock(&suspend_lock);
       } else if (strncmp(event_type->as.string, "microbit_button", 15) == 0) {
         // Button state change.
         process_client_button(event_data);
+      } else if (strncmp(event_type->as.string, "temperature", 15) == 0) {
+        // Temperature change.
+        process_client_temperature(event_data);
       } else if (strncmp(event_type->as.string, "accelerometer", 13) == 0) {
         // Accelerometer values change.
         process_client_accel(event_data);
@@ -1002,9 +1020,8 @@ run_simulator() {
     updates_fd = open("___device_updates", O_CREAT | O_TRUNC | O_WRONLY, S_IRUSR | S_IWUSR);
   }
 
-  //pthread_mutexattr_init(&suspend_lock_attr);
-  //pthread_mutexattr_settype(&suspend_lock_attr, PTHREAD_MUTEX_RECURSIVE);
-  pthread_mutex_init(&suspend_lock, NULL);// &suspend_lock_attr);
+  pthread_cond_init(&suspend_wait, NULL);
+  pthread_mutex_init(&suspend_lock, NULL);
 
   if (heartbeat_mode) {
     write_heartbeat();
@@ -1029,7 +1046,7 @@ run_simulator() {
   }
 
   pthread_mutex_destroy(&suspend_lock);
-  //pthread_mutexattr_destroy(&suspend_lock_attr);
+  pthread_cond_destroy(&suspend_wait);
 
   close(updates_fd);
   pthread_mutex_destroy(&updates_file_lock);

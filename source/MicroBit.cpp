@@ -648,8 +648,9 @@ MicroBitThermometer::getPeriod() {
 }
 int
 MicroBitThermometer::getTemperature() {
-  fprintf(stderr, "Unsupported: %s\n", __FUNCTION__);
-  return 0;
+  int32_t t;
+  get_temperature(&t);
+  return t;
 }
 void
 MicroBitThermometer::idleTick() {

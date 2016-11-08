@@ -743,6 +743,8 @@ int16_t _accel_z = 0;
 int32_t _magnet_x = 0;
 int32_t _magnet_y = 80000;
 int32_t _magnet_z = 0;
+
+int32_t _temperature = 28;
 }
 
 void
@@ -775,6 +777,16 @@ get_magnetometer(int32_t* x, int32_t* y, int32_t* z) {
   *y = _magnet_y;
   *z = _magnet_z;
   get_gpio_pin(MAG_INT1).set_input_voltage(3.3);
+}
+
+void
+set_temperature(int32_t t) {
+  _temperature = t;
+}
+
+void
+get_temperature(int32_t* t) {
+  *t = _temperature;
 }
 
 // Called by microbit.reset()

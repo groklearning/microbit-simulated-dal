@@ -94,6 +94,9 @@ void get_accelerometer(int16_t* x, int16_t* y, int16_t* z);
 void set_magnetometer(int32_t x, int32_t y, int32_t z);
 void get_magnetometer(int32_t* x, int32_t* y, int32_t* z);
 
+void set_temperature(int32_t t);
+void get_temperature(int32_t* t);
+
 void set_reset_flag();
 bool get_reset_flag();
 
