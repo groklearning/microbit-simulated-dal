@@ -479,13 +479,13 @@ write_bye() {
 }
 
 void
-write_event_ack() {
+write_event_ack(const char* event_type, const char* ack_data_json) {
   char json[1024];
   char* json_ptr = json;
   char* json_end = json + sizeof(json);
 
   snprintf(json_ptr, json_end - json_ptr,
-	   "[{ \"type\": \"microbit_ack\", \"ticks\": %d, \"data\": {}}]\n", get_macro_ticks());
+	   "[{ \"type\": \"microbit_ack\", \"ticks\": %d, \"data\": { \"type\": \"%s\", \"data\": %s }}]\n", get_macro_ticks(), event_type, ack_data_json ? ack_data_json : "{}");
   json_ptr += strnlen(json_ptr, json_end - json_ptr);
 
   write_to_updates(json, json_ptr - json, false);
@@ -520,7 +520,7 @@ process_client_button(const json_value* data) {
   // Make the code thread run with the new state.
   signal_interrupt();
 
-  write_event_ack();
+  write_event_ack("microbit_button", nullptr);
 }
 
 // Temperature updates are formatted as:
@@ -541,7 +541,9 @@ process_client_temperature(const json_value* data) {
   // Make the code thread run with the new state.
   signal_interrupt();
 
-  write_event_ack();
+  char ack_json[1024];
+  snprintf(ack_json, sizeof(ack_json), "{\"t\": %d}", static_cast<int32_t>(t->as.number));
+  write_event_ack("temperature", ack_json);
 }
 
 // Accelerometer updates are formatted as:
@@ -565,7 +567,9 @@ process_client_accel(const json_value* data) {
   // Make the code thread run with the new state.
   signal_interrupt();
 
-  write_event_ack();
+  char ack_json[1024];
+  snprintf(ack_json, sizeof(ack_json), "{\"x\": %f, \"y\": %f, \"z\": %f}", x->as.number, y->as.number, z->as.number);
+  write_event_ack("accelerometer", ack_json);
 }
 
 // Magnetometer updates are formatted as:
@@ -589,7 +593,9 @@ process_client_magnet(const json_value* data) {
   // Make the code thread run with the new state.
   signal_interrupt();
 
-  write_event_ack();
+  char ack_json[1024];
+  snprintf(ack_json, sizeof(ack_json), "{\"x\": %f, \"y\": %f, \"z\": %f}", x->as.number, y->as.number, z->as.number);
+  write_event_ack("magnetometer", ack_json);
 }
 
 // Pin updates are formatted as:
@@ -618,7 +624,7 @@ process_client_pins(const json_value* data) {
   // Make the code thread run with the new state.
   signal_interrupt();
 
-  write_event_ack();
+  write_event_ack("microbit_pin", nullptr);
 }
 
 // Handle an array of json events that we read from the pipe/file.
