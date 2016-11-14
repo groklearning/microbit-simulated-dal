@@ -739,6 +739,7 @@ namespace {
 int16_t _accel_x = 0;
 int16_t _accel_y = 1024;
 int16_t _accel_z = 0;
+BasicGesture _accel_gesture = GESTURE_NONE;
 
 int32_t _magnet_x = 0;
 int32_t _magnet_y = 80000;
@@ -748,18 +749,20 @@ int32_t _temperature = 28;
 }
 
 void
-set_accelerometer(int16_t x, int16_t y, int16_t z) {
+set_accelerometer(int16_t x, int16_t y, int16_t z, BasicGesture g) {
   _accel_x = x;
   _accel_y = y;
   _accel_z = z;
+  _accel_gesture = g;
   get_gpio_pin(ACCEL_INT1).set_input_voltage(0);
 }
 
 void
-get_accelerometer(int16_t* x, int16_t* y, int16_t* z) {
+get_accelerometer(int16_t* x, int16_t* y, int16_t* z, BasicGesture* g) {
   *x = _accel_x;
   *y = _accel_y;
   *z = _accel_z;
+  *g = _accel_gesture;
   get_gpio_pin(ACCEL_INT1).set_input_voltage(3.3);
 }
 

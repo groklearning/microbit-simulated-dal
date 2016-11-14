@@ -9,6 +9,8 @@
 
 #include "PinNames.h"
 
+#include "MicroBitAccelerometer.h"
+
 const size_t FLASH_ROM_SIZE = 200*1024;
 const size_t MAX_SCRIPT_SIZE = 100*1024;
 
@@ -88,8 +90,8 @@ public:
 
 DisplayLed& get_display_led(uint32_t n);
 
-void set_accelerometer(int16_t x, int16_t y, int16_t z);
-void get_accelerometer(int16_t* x, int16_t* y, int16_t* z);
+void set_accelerometer(int16_t x, int16_t y, int16_t z, BasicGesture g);
+void get_accelerometer(int16_t* x, int16_t* y, int16_t* z, BasicGesture* g);
 
 void set_magnetometer(int32_t x, int32_t y, int32_t z);
 void get_magnetometer(int32_t* x, int32_t* y, int32_t* z);

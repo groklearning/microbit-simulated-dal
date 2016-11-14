@@ -27,6 +27,8 @@ extern "C" void app_main();
 
 // For the MICROBIT_PIN_* constants.
 #include "MicroBitPin.h"
+// For the GESTURE_* constants.
+#include "MicroBitAccelerometer.h"
 
 extern "C" {
 #include "json.h"
@@ -546,6 +548,43 @@ process_client_temperature(const json_value* data) {
   write_event_ack("temperature", ack_json);
 }
 
+BasicGesture get_gesture_from_name(const char* name) {
+  if (strcasecmp(name, "up") == 0) {
+    return GESTURE_UP;
+  }
+  if (strcasecmp(name, "down") == 0) {
+    return GESTURE_DOWN;
+  }
+  if (strcasecmp(name, "left") == 0) {
+    return GESTURE_LEFT;
+  }
+  if (strcasecmp(name, "right") == 0) {
+    return GESTURE_RIGHT;
+  }
+  if (strcasecmp(name, "face_up") == 0) {
+    return GESTURE_FACE_UP;
+  }
+  if (strcasecmp(name, "face_down") == 0) {
+    return GESTURE_FACE_DOWN;
+  }
+  if (strcasecmp(name, "freefall") == 0) {
+    return GESTURE_FREEFALL;
+  }
+  if (strcasecmp(name, "3g") == 0) {
+    return GESTURE_3G;
+  }
+  if (strcasecmp(name, "6g") == 0) {
+    return GESTURE_6G;
+  }
+  if (strcasecmp(name, "8g") == 0) {
+    return GESTURE_8G;
+  }
+  if (strcasecmp(name, "shake") == 0) {
+    return GESTURE_SHAKE;
+  }
+  return GESTURE_NONE;
+}
+
 // Accelerometer updates are formatted as:
 // { x: <number>, y: <number>, z: <number> }
 // The values correspond to the values read by accelerometer.get_*().
@@ -560,8 +599,14 @@ process_client_accel(const json_value* data) {
     return;
   }
 
+  BasicGesture g = GESTURE_NONE;
+  const json_value* g_json = json_value_get(data, "gesture");
+  if (g_json && g_json->type == JSON_VALUE_TYPE_STRING) {
+    g = get_gesture_from_name(g_json->as.string);
+  }
+
   pthread_mutex_lock(&code_lock);
-  set_accelerometer(x->as.number, y->as.number, z->as.number);
+  set_accelerometer(x->as.number, y->as.number, z->as.number, g);
   pthread_mutex_unlock(&code_lock);
 
   // Make the code thread run with the new state.

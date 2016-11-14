@@ -57,7 +57,12 @@ MicroBitAccelerometer::~MicroBitAccelerometer() {
 }
 int
 MicroBitAccelerometer::update() {
-  get_accelerometer(&sample.x, &sample.y, &sample.z);
+  BasicGesture g;
+  get_accelerometer(&sample.x, &sample.y, &sample.z, &g);
+  if (g != currentGesture) {
+    currentGesture = g;
+    MicroBitEvent e(MICROBIT_ID_GESTURE, currentGesture);
+  }
   recalculatePitchRoll();
   return 0;
 }
@@ -103,7 +108,7 @@ MicroBitAccelerometer::getZ(MicroBitCoordinateSystem system) {
 }
 BasicGesture
 MicroBitAccelerometer::getGesture() {
-  return BasicGesture::GESTURE_NONE;
+  return currentGesture;
 }
 void
 MicroBitAccelerometer::idleTick() {
@@ -419,12 +424,6 @@ MicroBit::getTickPeriod() {
 
 unsigned long
 MicroBit::systemTime() {
-  // TODO(jim): In regular mode, sync to the system clock.
-  // struct timespec ts;
-  // clock_gettime(CLOCK_MONOTONIC_COARSE, &ts);
-  // unsigned long ms = ts.tv_sec * 1000;
-  // ms += ts.tv_nsec / 1000000ULL;
-  // return ms - _boot_time;
   unsigned long ms = get_macro_ticks() * 6;
   return ms - _boot_time;
 }
