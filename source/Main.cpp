@@ -600,10 +600,15 @@ process_client_accel(const json_value* data) {
   }
 
   BasicGesture g = GESTURE_NONE;
+  const char* gesture_name = "";
   const json_value* g_json = json_value_get(data, "gesture");
   if (g_json && g_json->type == JSON_VALUE_TYPE_STRING) {
     g = get_gesture_from_name(g_json->as.string);
+    if (g != GESTURE_NONE) {
+      gesture_name = g_json->as.string;
+    }
   }
+
 
   pthread_mutex_lock(&code_lock);
   set_accelerometer(x->as.number, y->as.number, z->as.number, g);
@@ -613,7 +618,7 @@ process_client_accel(const json_value* data) {
   signal_interrupt();
 
   char ack_json[1024];
-  snprintf(ack_json, sizeof(ack_json), "{\"x\": %f, \"y\": %f, \"z\": %f}", x->as.number, y->as.number, z->as.number);
+  snprintf(ack_json, sizeof(ack_json), "{\"x\": %f, \"y\": %f, \"z\": %f, \"gesture\": \"%s\"}", x->as.number, y->as.number, z->as.number, gesture_name);
   write_event_ack("accelerometer", ack_json);
 }
 
