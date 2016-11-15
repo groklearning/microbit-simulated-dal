@@ -737,13 +737,13 @@ get_gpio_pin(uint32_t pin) {
 
 namespace {
 int16_t _accel_x = 0;
-int16_t _accel_y = 1024;
+int16_t _accel_y = -1024;
 int16_t _accel_z = 0;
-BasicGesture _accel_gesture = GESTURE_NONE;
+BasicGesture _accel_gesture = GESTURE_UP;
 
 int32_t _magnet_x = 0;
-int32_t _magnet_y = 80000;
-int32_t _magnet_z = 0;
+int32_t _magnet_y = 20000;
+int32_t _magnet_z = 25000;
 
 int32_t _temperature = 28;
 }

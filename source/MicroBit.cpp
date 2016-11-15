@@ -113,13 +113,11 @@ MicroBitAccelerometer::getGesture() {
 void
 MicroBitAccelerometer::idleTick() {
   // Called by the micro:bit micropython code before calls to get*().
-  if (!int1) {
-    update();
-  }
+  update();
 }
 int
 MicroBitAccelerometer::isIdleCallbackNeeded() {
-  return !int1;
+  return true;
 }
 void
 MicroBitAccelerometer::recalculatePitchRoll() {
@@ -269,9 +267,7 @@ MicroBitCompass::getCalibration() {
 void
 MicroBitCompass::idleTick() {
   // Called by the micro:bit micropython code before calls to get*().
-  if (!int1) {
-    get_magnetometer(&sample.x, &sample.y, &sample.z);
-  }
+  get_magnetometer(&sample.x, &sample.y, &sample.z);
 }
 int
 MicroBitCompass::isCalibrated() {
@@ -286,7 +282,7 @@ MicroBitCompass::clearCalibration() {
 }
 int
 MicroBitCompass::isIdleCallbackNeeded() {
-  return !int1;
+  return true;
 }
 
 namespace {

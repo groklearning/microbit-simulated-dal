@@ -561,10 +561,10 @@ BasicGesture get_gesture_from_name(const char* name) {
   if (strcasecmp(name, "right") == 0) {
     return GESTURE_RIGHT;
   }
-  if (strcasecmp(name, "face_up") == 0) {
+  if (strcasecmp(name, "face up") == 0) {
     return GESTURE_FACE_UP;
   }
-  if (strcasecmp(name, "face_down") == 0) {
+  if (strcasecmp(name, "face down") == 0) {
     return GESTURE_FACE_DOWN;
   }
   if (strcasecmp(name, "freefall") == 0) {
