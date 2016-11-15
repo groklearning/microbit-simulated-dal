@@ -437,6 +437,30 @@ check_led_updates() {
   }
 }
 
+void
+check_random_updates() {
+  bool exceeded = false;
+  static bool exceeded_prev = false;
+
+  pthread_mutex_lock(&code_lock);
+  exceeded = has_exceeded_random_call_limit();
+  pthread_mutex_unlock(&code_lock);
+
+  if (exceeded != exceeded_prev) {
+    char json[1024];
+    char* json_ptr = json;
+    char* json_end = json + sizeof(json);
+
+    snprintf(json_ptr, json_end - json_ptr,
+             "[{ \"type\": \"random_state\", \"ticks\": %d, \"data\": { \"exceeded\": %s }}]\n", get_macro_ticks(), exceeded ? "true": "false");
+    json_ptr += strnlen(json_ptr, json_end - json_ptr);
+
+    write_to_updates(json, json_ptr - json, true);
+
+    exceeded_prev = exceeded;
+  }
+}
+
 // Returns the number of macro ticks that we expect should have passed (based on the real clock).
 // This only makes sense in normal mode (i.e. not fast mode).
 uint32_t
@@ -693,7 +717,7 @@ process_client_random(const json_value* data) {
   // Make the code thread run with the new state.
   signal_interrupt();
 
-  write_event_ack("microbit_pin", nullptr);
+  write_event_ack("random", nullptr);
 }
 
 // Handle an array of json events that we read from the pipe/file.
@@ -798,6 +822,7 @@ handle_timerfd_event(uint32_t ticks) {
   if (get_macro_ticks() != macroticks_last_led_update) {
     check_led_updates();
     check_gpio_updates();
+    check_random_updates();
     macroticks_last_led_update = get_macro_ticks();
   }
 

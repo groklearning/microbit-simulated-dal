@@ -802,7 +802,7 @@ set_random_state(int32_t next, int32_t repeat) {
   if (next >= 0) {
     _inject_random = true;
     _next_random = next;
-    if (repeat <= 0) {
+    if (repeat < 0) {
       _remaining_random = std::numeric_limits<int32_t>::max();
     } else {
       _remaining_random = repeat;
@@ -827,9 +827,9 @@ get_random() {
   }
 }
 
-int32_t
-get_random_remaining() {
-  return _remaining_random;
+bool
+has_exceeded_random_call_limit() {
+  return _remaining_random < 0;
 }
 
 // Called by microbit.reset()

@@ -102,7 +102,7 @@ void get_temperature(int32_t* t);
 void set_random_state(int32_t next, int32_t repeat);
 void set_random_seed(uint32_t seed);
 uint32_t get_random();
-int32_t get_random_remaining();
+bool has_exceeded_random_call_limit();
 
 void set_reset_flag();
 bool get_reset_flag();
