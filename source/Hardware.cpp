@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <termios.h>
 #include <unistd.h>
+#include <limits>
 
 #include "PinNames.h"
 #include "gpio_api.h"
@@ -801,7 +802,11 @@ set_random_state(int32_t next, int32_t repeat) {
   if (next >= 0) {
     _inject_random = true;
     _next_random = next;
-    _remaining_random = repeat;
+    if (repeat <= 0) {
+      _remaining_random = std::numeric_limits<int32_t>::max();
+    } else {
+      _remaining_random = repeat;
+    }
   } else {
     _inject_random = false;
   }
