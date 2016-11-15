@@ -677,6 +677,25 @@ process_client_pins(const json_value* data) {
   write_event_ack("microbit_pin", nullptr);
 }
 
+void
+process_client_random(const json_value* data) {
+  const json_value* next = json_value_get(data, "next");
+  const json_value* repeat = json_value_get(data, "repeat");
+  if (!next || !repeat || next->type != JSON_VALUE_TYPE_NUMBER || repeat->type != JSON_VALUE_TYPE_NUMBER) {
+    fprintf(stderr, "Random next or repeat missing.\n");
+    return;
+  }
+
+  pthread_mutex_lock(&code_lock);
+  set_random_state(next->as.number, repeat->as.number);
+  pthread_mutex_unlock(&code_lock);
+
+  // Make the code thread run with the new state.
+  signal_interrupt();
+
+  write_event_ack("microbit_pin", nullptr);
+}
+
 // Handle an array of json events that we read from the pipe/file.
 // All json events are at a minimum:
 //   { "type": "<string>", "data": { <object> } }
@@ -717,6 +736,9 @@ process_client_json(const json_value* json) {
       } else if (strncmp(event_type->as.string, "microbit_pin", 13) == 0) {
         // Something driving the GPIO pins.
         process_client_pins(event_data);
+      } else if (strncmp(event_type->as.string, "random", 13) == 0) {
+        // Injected random data (from the marker only).
+        process_client_random(event_data);
       } else {
         fprintf(stderr, "Unknown event type: %s\n", event_type->as.string);
       }

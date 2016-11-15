@@ -328,15 +328,15 @@ MicroBit::sleep(int milliseconds) {
 }
 void
 MicroBit::seedRandom() {
-  srand(0);
+  seedRandom(0);
 }
 void
 MicroBit::seedRandom(uint32_t seed) {
-  srand(seed);
+  set_random_seed(seed);
 }
 int
 MicroBit::random(int max) {
-  return rand() % max;
+  return get_random() % max;
 }
 void
 MicroBit::systemTick() {

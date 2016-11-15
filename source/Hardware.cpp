@@ -746,6 +746,10 @@ int32_t _magnet_y = -20000;
 int32_t _magnet_z = 25000;
 
 int32_t _temperature = 28;
+
+bool _inject_random = false;
+int32_t _next_random = 0;
+int32_t _remaining_random = 0;
 }
 
 void
@@ -790,6 +794,37 @@ set_temperature(int32_t t) {
 void
 get_temperature(int32_t* t) {
   *t = _temperature;
+}
+
+void
+set_random_state(int32_t next, int32_t repeat) {
+  if (next >= 0) {
+    _inject_random = true;
+    _next_random = next;
+    _remaining_random = repeat;
+  } else {
+    _inject_random = false;
+  }
+}
+
+void
+set_random_seed(uint32_t seed) {
+  srand(seed);
+}
+
+uint32_t
+get_random() {
+  if (_inject_random) {
+    --_remaining_random;
+    return _next_random;
+  } else {
+    return rand();
+  }
+}
+
+int32_t
+get_random_remaining() {
+  return _remaining_random;
 }
 
 // Called by microbit.reset()
