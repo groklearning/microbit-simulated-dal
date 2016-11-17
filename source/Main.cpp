@@ -476,6 +476,8 @@ check_marker_failure_updates() {
 
     struct buffer* msg_buf = buffer_create();
     json_write_escape_string(msg_buf, msg);
+    buffer_reserve(msg_buf, 1);
+    msg_buf->data[msg_buf->nbytes_used] = 0;
 
     snprintf(json_ptr, json_end - json_ptr,
              "[{ \"type\": \"marker_failure\", \"ticks\": %d, \"data\": { \"message\": %s }}]\n", get_macro_ticks(), msg_buf->data);
@@ -768,6 +770,7 @@ process_client_json(const json_value* json) {
   while (event) {
     if (event->value->type != JSON_VALUE_TYPE_OBJECT) {
       fprintf(stderr, "Event should be an object.\n");
+      event = event->next;
       continue;
     }
     const json_value* event_type = json_value_get(event->value, "type");
