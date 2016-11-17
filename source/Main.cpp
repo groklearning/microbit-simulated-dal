@@ -31,6 +31,7 @@ extern "C" void app_main();
 #include "MicroBitAccelerometer.h"
 
 extern "C" {
+#include "buffer.h"
 #include "json.h"
 }
 
@@ -461,6 +462,35 @@ check_random_updates() {
   }
 }
 
+void
+check_marker_failure_updates() {
+  const char* msg = nullptr;
+
+  pthread_mutex_lock(&code_lock);
+  msg = get_marker_failure_event();
+
+  if (msg) {
+    char json[20480];
+    char* json_ptr = json;
+    char* json_end = json + sizeof(json);
+
+    struct buffer* msg_buf = buffer_create();
+    json_write_escape_string(msg_buf, msg);
+
+    snprintf(json_ptr, json_end - json_ptr,
+             "[{ \"type\": \"marker_failure\", \"ticks\": %d, \"data\": { \"message\": %s }}]\n", get_macro_ticks(), msg_buf->data);
+    json_ptr += strnlen(json_ptr, json_end - json_ptr);
+
+    buffer_destroy(msg_buf);
+
+    write_to_updates(json, json_ptr - json, true);
+
+    set_marker_failure_event(nullptr);
+  }
+
+  pthread_mutex_unlock(&code_lock);
+}
+
 // Returns the number of macro ticks that we expect should have passed (based on the real clock).
 // This only makes sense in normal mode (i.e. not fast mode).
 uint32_t
@@ -705,14 +735,20 @@ void
 process_client_random(const json_value* data) {
   const json_value* next = json_value_get(data, "next");
   const json_value* repeat = json_value_get(data, "repeat");
-  if (!next || !repeat || next->type != JSON_VALUE_TYPE_NUMBER || repeat->type != JSON_VALUE_TYPE_NUMBER) {
-    fprintf(stderr, "Random next or repeat missing.\n");
+  const json_value* choice_count = json_value_get(data, "choice_count");
+  const json_value* choice_result = json_value_get(data, "choice_result");
+  if (next && repeat && next->type == JSON_VALUE_TYPE_NUMBER && repeat->type == JSON_VALUE_TYPE_NUMBER) {
+    pthread_mutex_lock(&code_lock);
+    set_random_state(next->as.number, repeat->as.number);
+    pthread_mutex_unlock(&code_lock);
+  } else if (choice_count && choice_result && choice_count->type == JSON_VALUE_TYPE_NUMBER && choice_result->type == JSON_VALUE_TYPE_STRING) {
+    pthread_mutex_lock(&code_lock);
+    set_random_choice(choice_count->as.number, choice_result->as.string);
+    pthread_mutex_unlock(&code_lock);
+  } else {
+    fprintf(stderr, "Random needs (next, repeat) or (choice_count, choice_result).\n");
     return;
   }
-
-  pthread_mutex_lock(&code_lock);
-  set_random_state(next->as.number, repeat->as.number);
-  pthread_mutex_unlock(&code_lock);
 
   // Make the code thread run with the new state.
   signal_interrupt();
@@ -823,6 +859,7 @@ handle_timerfd_event(uint32_t ticks) {
     check_led_updates();
     check_gpio_updates();
     check_random_updates();
+    check_marker_failure_updates();
     macroticks_last_led_update = get_macro_ticks();
   }
 

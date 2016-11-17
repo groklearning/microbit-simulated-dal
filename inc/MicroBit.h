@@ -59,6 +59,9 @@
 #define MICROBIT_DEFAULT_TICK_PERIOD            FIBER_TICK_PERIOD_MS
 
 
+#include "Hardware.h"
+
+
 /**
   * Class definition for a MicroBit device.
   *

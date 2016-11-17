@@ -751,6 +751,10 @@ int32_t _temperature = 28;
 bool _inject_random = false;
 int32_t _next_random = 0;
 int32_t _remaining_random = 0;
+int32_t _random_choice_count = -1;
+char _random_choice_repr[20480] = {0};
+
+char _marker_failure_message[20480] = {0};
 }
 
 void
@@ -830,6 +834,43 @@ get_random() {
 bool
 has_exceeded_random_call_limit() {
   return _remaining_random < 0;
+}
+
+void
+set_random_choice(int32_t count, const char* result) {
+  _random_choice_count = count;
+  strncpy(_random_choice_repr, result, sizeof(_random_choice_repr));
+}
+
+bool
+get_random_choice(int32_t* count, const char** result) {
+  if (_random_choice_count <= 0 || strlen(_random_choice_repr) == 0) {
+    return false;
+  }
+  *count = _random_choice_count;
+  if (strlen(_random_choice_repr) == 0) {
+    *result = nullptr;
+  } else {
+    *result = _random_choice_repr;
+  }
+}
+
+void
+set_marker_failure_event(const char* msg) {
+  if (msg) {
+    strncpy(_marker_failure_message, msg, sizeof(_marker_failure_message));
+  } else {
+    _marker_failure_message[0] = 0;
+  }
+}
+
+const char*
+get_marker_failure_event() {
+  if (strlen(_marker_failure_message) == 0) {
+    return nullptr;
+  } else {
+    return _marker_failure_message;
+  }
 }
 
 // Called by microbit.reset()
