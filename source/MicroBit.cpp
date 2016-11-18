@@ -121,11 +121,11 @@ MicroBitAccelerometer::isIdleCallbackNeeded() {
 }
 void
 MicroBitAccelerometer::recalculatePitchRoll() {
-  float x = (float)getX(SIMPLE_CARTESIAN);
-  float y = (float)getY(SIMPLE_CARTESIAN);
-  float z = (float)getZ(SIMPLE_CARTESIAN);
+  float x = (float)getX(NORTH_EAST_DOWN);
+  float y = (float)getY(NORTH_EAST_DOWN);
+  float z = (float)getZ(NORTH_EAST_DOWN);
 
-  roll = atan2(getY(SIMPLE_CARTESIAN), getZ(SIMPLE_CARTESIAN));
+  roll = atan2(getY(NORTH_EAST_DOWN), getZ(NORTH_EAST_DOWN));
   pitch = atan(-x / (y * sin(roll) + z * cos(roll)));
 }
 float
