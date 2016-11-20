@@ -845,7 +845,7 @@ set_random_choice(int32_t count, const char* result) {
 
 bool
 get_random_choice(int32_t* count, const char** result) {
-  if (_random_choice_count <= 0 || strlen(_random_choice_repr) == 0) {
+  if (_random_choice_count <= 0) {
     return false;
   }
   *count = _random_choice_count;
@@ -854,6 +854,7 @@ get_random_choice(int32_t* count, const char** result) {
   } else {
     *result = _random_choice_repr;
   }
+  return true;
 }
 
 void
