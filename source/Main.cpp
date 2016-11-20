@@ -1137,6 +1137,8 @@ run_simulator() {
   get_gpio_pin(BUTTON_A).set_input_voltage(3.3);
   get_gpio_pin(BUTTON_B).set_input_voltage(3.3);
 
+  srand(time(NULL));
+
   // Install an INT handler so that we can make Ctrl-C clean up nicely.
   struct sigaction sa;
   sa.sa_handler = handle_sigint;

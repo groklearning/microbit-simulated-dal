@@ -328,7 +328,7 @@ MicroBit::sleep(int milliseconds) {
 }
 void
 MicroBit::seedRandom() {
-  seedRandom(0);
+  seedRandom(static_cast<uint32_t>(time(NULL)));
 }
 void
 MicroBit::seedRandom(uint32_t seed) {
