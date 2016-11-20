@@ -464,30 +464,36 @@ check_random_updates() {
 
 void
 check_marker_failure_updates() {
-  const char* msg = nullptr;
+  const char* category = nullptr;
+  const char* message = nullptr;
 
   pthread_mutex_lock(&code_lock);
-  msg = get_marker_failure_event();
 
-  if (msg) {
+  if (get_marker_failure_event(&category, &message)) {
     char json[20480];
     char* json_ptr = json;
     char* json_end = json + sizeof(json);
 
-    struct buffer* msg_buf = buffer_create();
-    json_write_escape_string(msg_buf, msg);
-    buffer_reserve(msg_buf, 1);
-    msg_buf->data[msg_buf->nbytes_used] = 0;
+    struct buffer* category_buf = buffer_create();
+    json_write_escape_string(category_buf, category);
+    buffer_reserve(category_buf, 1);
+    category_buf->data[category_buf->nbytes_used] = 0;
+
+    struct buffer* message_buf = buffer_create();
+    json_write_escape_string(message_buf, message);
+    buffer_reserve(message_buf, 1);
+    message_buf->data[message_buf->nbytes_used] = 0;
 
     snprintf(json_ptr, json_end - json_ptr,
-             "[{ \"type\": \"marker_failure\", \"ticks\": %d, \"data\": { \"message\": %s }}]\n", get_macro_ticks(), msg_buf->data);
+             "[{ \"type\": \"marker_failure\", \"ticks\": %d, \"data\": { \"category\": %s, \"message\": %s }}]\n", get_macro_ticks(), category_buf->data, message_buf->data);
     json_ptr += strnlen(json_ptr, json_end - json_ptr);
 
-    buffer_destroy(msg_buf);
+    buffer_destroy(category_buf);
+    buffer_destroy(message_buf);
 
     write_to_updates(json, json_ptr - json, true);
 
-    set_marker_failure_event(nullptr);
+    set_marker_failure_event(nullptr, nullptr);
   }
 
   pthread_mutex_unlock(&code_lock);

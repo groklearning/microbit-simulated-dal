@@ -106,8 +106,8 @@ bool has_exceeded_random_call_limit();
 void set_random_choice(int32_t count, const char* result);
 bool get_random_choice(int32_t* count, const char** result);
 
-void set_marker_failure_event(const char* msg);
-const char* get_marker_failure_event();
+void set_marker_failure_event(const char* category, const char* message);
+bool get_marker_failure_event(const char** category, const char** message);
 
 void set_reset_flag();
 bool get_reset_flag();

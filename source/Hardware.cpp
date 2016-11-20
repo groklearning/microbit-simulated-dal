@@ -754,6 +754,7 @@ int32_t _remaining_random = 0;
 int32_t _random_choice_count = -1;
 char _random_choice_repr[20480] = {0};
 
+char _marker_failure_category[1024] = {0};
 char _marker_failure_message[20480] = {0};
 }
 
@@ -856,20 +857,26 @@ get_random_choice(int32_t* count, const char** result) {
 }
 
 void
-set_marker_failure_event(const char* msg) {
-  if (msg) {
-    strncpy(_marker_failure_message, msg, sizeof(_marker_failure_message));
+set_marker_failure_event(const char* category, const char* message) {
+  if (category && message) {
+    strncpy(_marker_failure_category, category, sizeof(_marker_failure_category));
+    strncpy(_marker_failure_message, message, sizeof(_marker_failure_message));
   } else {
+    _marker_failure_category[0] = 0;
     _marker_failure_message[0] = 0;
   }
 }
 
-const char*
-get_marker_failure_event() {
-  if (strlen(_marker_failure_message) == 0) {
-    return nullptr;
+bool
+get_marker_failure_event(const char** category, const char** message) {
+  if (strlen(_marker_failure_category) == 0 || strlen(_marker_failure_message) == 0) {
+    *category = nullptr;
+    *message = nullptr;
+    return false;
   } else {
-    return _marker_failure_message;
+    *category = _marker_failure_category;
+    *message = _marker_failure_message;
+    return true;
   }
 }
 
