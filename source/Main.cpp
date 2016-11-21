@@ -499,6 +499,39 @@ check_marker_failure_updates() {
   pthread_mutex_unlock(&code_lock);
 }
 
+void
+check_radio_tx() {
+  pthread_mutex_lock(&code_lock);
+
+  simulator_radio_frame_t f;
+  if (simulator_radio_get_tx(&f)) {
+    char json[20480];
+    char* json_ptr = json;
+    char* json_end = json + sizeof(json);
+
+    snprintf(json_ptr, json_end - json_ptr,
+             "[{ \"type\": \"microbit_radio_tx\", \"ticks\": %d, \"data\": { \"frame\": [", get_macro_ticks());
+    json_ptr += strnlen(json_ptr, json_end - json_ptr);
+
+    for (uint32_t i = 0; i < f.len; ++i) {
+      if (i > 0) {
+	snprintf(json_ptr, json_end - json_ptr, ",%d", f.data[i]);
+      } else {
+	snprintf(json_ptr, json_end - json_ptr, "%d", f.data[i]);
+      }
+      json_ptr += strnlen(json_ptr, json_end - json_ptr);
+    }
+
+    snprintf(json_ptr, json_end - json_ptr,
+             "], \"channel\": %d, \"base\": %d, \"prefix\": %d, \"data_rate\": %d }}]\n", f.channel, f.base0, f.prefix0, f.data_rate);
+    json_ptr += strnlen(json_ptr, json_end - json_ptr);
+
+    write_to_updates(json, json_ptr - json, true);
+  }
+
+  pthread_mutex_unlock(&code_lock);
+}
+
 // Returns the number of macro ticks that we expect should have passed (based on the real clock).
 // This only makes sense in normal mode (i.e. not fast mode).
 uint32_t
@@ -740,6 +773,39 @@ process_client_pins(const json_value* data) {
 }
 
 void
+process_client_radio_rx(const json_value* data) {
+  const json_value* frame = json_value_get(data, "frame");
+  const json_value* channel = json_value_get(data, "channel");
+  const json_value* base = json_value_get(data, "base");
+  const json_value* prefix = json_value_get(data, "prefix");
+  const json_value* data_rate = json_value_get(data, "data_rate");
+  if (frame && channel && base && prefix && data_rate && frame->type == JSON_VALUE_TYPE_ARRAY && channel->type == JSON_VALUE_TYPE_NUMBER && base->type == JSON_VALUE_TYPE_NUMBER && prefix->type == JSON_VALUE_TYPE_NUMBER && data_rate->type == JSON_VALUE_TYPE_NUMBER) {
+    pthread_mutex_lock(&code_lock);
+    simulator_radio_frame_t f;
+
+    const json_value_list* frame_bytes = frame->as.pairs;
+    while (frame_bytes && f.len < 2048) {
+      if (frame_bytes->value->type == JSON_VALUE_TYPE_NUMBER) {
+	f.data[f.len] = static_cast<uint8_t>(frame_bytes->value->as.number);
+	++f.len;
+      }
+      frame_bytes = frame_bytes->next;
+    }
+
+    simulator_radio_add_rx(f);
+    pthread_mutex_unlock(&code_lock);
+  } else {
+    fprintf(stderr, "micro:bit radio needs (frame, channel, base, prefix, data_rate).\n");
+    return;
+  }
+
+  // Make the code thread run with the new state.
+  signal_interrupt();
+
+  write_event_ack("microbit_radio_rx", nullptr);
+}
+
+void
 process_client_random(const json_value* data) {
   const json_value* next = json_value_get(data, "next");
   const json_value* repeat = json_value_get(data, "repeat");
@@ -805,6 +871,9 @@ process_client_json(const json_value* json) {
       } else if (strncmp(event_type->as.string, "microbit_pin", 13) == 0) {
         // Something driving the GPIO pins.
         process_client_pins(event_data);
+      } else if (strncmp(event_type->as.string, "microbit_radio_rx", 13) == 0) {
+        // Radio data.
+        process_client_radio_rx(event_data);
       } else if (strncmp(event_type->as.string, "random", 13) == 0) {
         // Injected random data (from the marker only).
         process_client_random(event_data);
@@ -869,6 +938,7 @@ handle_timerfd_event(uint32_t ticks) {
     check_gpio_updates();
     check_random_updates();
     check_marker_failure_updates();
+    check_radio_tx();
     macroticks_last_led_update = get_macro_ticks();
   }
 

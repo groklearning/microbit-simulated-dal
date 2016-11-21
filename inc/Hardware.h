@@ -106,6 +106,24 @@ bool has_exceeded_random_call_limit();
 void set_random_choice(int32_t count, const char* result);
 bool get_random_choice(int32_t* count, const char** result);
 
+
+struct simulator_radio_frame_t {
+simulator_radio_frame_t() : len(0) {}
+  uint32_t len;
+  char data[2048];
+  uint8_t channel;
+  uint32_t base0;
+  uint8_t prefix0;
+  uint8_t data_rate;
+};
+
+void simulator_radio_config(uint8_t channel, uint32_t base0, uint8_t prefix0, uint8_t data_rate);
+void simulator_radio_send(const uint8_t* buf, uint32_t len);
+bool simulator_radio_receive(uint8_t* buf, uint32_t* len);
+
+bool simulator_radio_get_tx(simulator_radio_frame_t* f);
+void simulator_radio_add_rx(simulator_radio_frame_t f);
+
 void set_marker_failure_event(const char* category, const char* message);
 bool get_marker_failure_event(const char** category, const char** message);
 

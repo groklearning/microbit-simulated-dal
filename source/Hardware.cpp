@@ -4,6 +4,8 @@
 #include <unistd.h>
 #include <limits>
 
+#include <queue>
+
 #include "PinNames.h"
 #include "gpio_api.h"
 #include "gpio_object.h"
@@ -741,21 +743,6 @@ int16_t _accel_x = 0;
 int16_t _accel_y = 0;
 int16_t _accel_z = -1024;
 BasicGesture _accel_gesture = GESTURE_FACE_UP;
-
-int32_t _magnet_x = 0;
-int32_t _magnet_y = -20000;
-int32_t _magnet_z = 25000;
-
-int32_t _temperature = 28;
-
-bool _inject_random = false;
-int32_t _next_random = 0;
-int32_t _remaining_random = 0;
-int32_t _random_choice_count = -1;
-char _random_choice_repr[20480] = {0};
-
-char _marker_failure_category[1024] = {0};
-char _marker_failure_message[20480] = {0};
 }
 
 void
@@ -776,6 +763,12 @@ get_accelerometer(int16_t* x, int16_t* y, int16_t* z, BasicGesture* g) {
   get_gpio_pin(ACCEL_INT1).set_input_voltage(3.3);
 }
 
+namespace {
+int32_t _magnet_x = 0;
+int32_t _magnet_y = -20000;
+int32_t _magnet_z = 25000;
+}
+
 void
 set_magnetometer(int32_t x, int32_t y, int32_t z) {
   _magnet_x = x;
@@ -792,6 +785,10 @@ get_magnetometer(int32_t* x, int32_t* y, int32_t* z) {
   get_gpio_pin(MAG_INT1).set_input_voltage(3.3);
 }
 
+namespace {
+int32_t _temperature = 28;
+}
+
 void
 set_temperature(int32_t t) {
   _temperature = t;
@@ -800,6 +797,14 @@ set_temperature(int32_t t) {
 void
 get_temperature(int32_t* t) {
   *t = _temperature;
+}
+
+namespace {
+bool _inject_random = false;
+int32_t _next_random = 0;
+int32_t _remaining_random = 0;
+int32_t _random_choice_count = -1;
+char _random_choice_repr[20480] = {0};
 }
 
 void
@@ -855,6 +860,67 @@ get_random_choice(int32_t* count, const char** result) {
     *result = _random_choice_repr;
   }
   return true;
+}
+
+namespace {
+std::queue<simulator_radio_frame_t> _radio_tx_frames;
+std::queue<simulator_radio_frame_t> _radio_rx_frames;
+uint8_t _radio_channel;
+uint32_t _radio_base0;
+uint8_t _radio_prefix0;
+uint8_t _radio_data_rate;
+}
+
+void
+simulator_radio_config(uint8_t channel, uint32_t base0, uint8_t prefix0, uint8_t data_rate) {
+  _radio_channel = channel;
+  _radio_base0 = base0;
+  _radio_prefix0 = prefix0;
+  _radio_data_rate = data_rate;
+}
+
+void
+simulator_radio_send(const uint8_t* buf, uint32_t len) {
+  simulator_radio_frame_t f;
+  memcpy(f.data, buf, len);
+  f.len = len;
+  f.channel = _radio_channel;
+  f.base0 = _radio_base0;
+  f.prefix0 = _radio_prefix0;
+  f.data_rate = _radio_data_rate;
+  _radio_tx_frames.push(f);
+}
+
+bool
+simulator_radio_receive(uint8_t* buf, uint32_t* len) {
+  if (_radio_rx_frames.size() == 0) {
+    return false;
+  }
+  simulator_radio_frame_t f = _radio_rx_frames.front();
+  _radio_rx_frames.pop();
+  memcpy(buf, f.data, min(*len, f.len));
+  *len = f.len;
+  return true;
+}
+
+bool
+simulator_radio_get_tx(simulator_radio_frame_t* f) {
+  if (_radio_tx_frames.size() == 0) {
+    return false;
+  } else {
+    *f = _radio_tx_frames.front();
+    _radio_tx_frames.pop();
+  }
+}
+
+void
+simulator_radio_add_rx(simulator_radio_frame_t f) {
+  _radio_rx_frames.push(f);
+}
+
+namespace {
+char _marker_failure_category[1024] = {0};
+char _marker_failure_message[20480] = {0};
 }
 
 void

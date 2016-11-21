@@ -58,8 +58,8 @@ typedef enum {
     p27 = 27,
     p28 = 28,
     p29 = 29,
-    p30 = 30,  
-    
+    p30 = 30,
+
     //NORMAL PINS...
     P0_0  = p0,
     P0_1  = p1,
@@ -69,7 +69,7 @@ typedef enum {
     P0_5  = p5,
     P0_6  = p6,
     P0_7  = p7,
-    
+
     P0_8  = p8,
     P0_9  = p9,
     P0_10 = p10,
@@ -78,7 +78,7 @@ typedef enum {
     P0_13 = p13,
     P0_14 = p14,
     P0_15 = p15,
-    
+
     P0_16 = p16,
     P0_17 = p17,
     P0_18 = p18,
@@ -87,7 +87,7 @@ typedef enum {
     P0_21 = p21,
     P0_22 = p22,
     P0_23 = p23,
-    
+
     P0_24 = p24,
     P0_25 = p25,
     P0_26 = p26,
@@ -100,7 +100,7 @@ typedef enum {
     PAD3 = p1,
     PAD2 = p2,
     PAD1 = p3,
-    
+
 
     //LED MATRIX COLS
     COL1 = p4,
@@ -123,11 +123,11 @@ typedef enum {
 
     // BUTTON A
     BUTTON_A = p17,
-    
+
 
     //NORMAL PIN (NO SPECIFIED FUNCTIONALITY)
     //PIN_18
-    
+
     //TARGET RESET
     TGT_NRESET = p19,
 
@@ -136,7 +136,7 @@ typedef enum {
 
     //MASTER OUT SLAVE IN
     MOSI = p21,
-    
+
     //MASTER IN SLAVE OUT
     MISO = p22,
 
@@ -149,7 +149,7 @@ typedef enum {
 
     //BUTTON B
     BUTTON_B = p26,
-    
+
     //ACCEL INTERRUPT PINS (MMA8653FC)
     ACCEL_INT2 = p27,
     ACCEL_INT1 = p28,
@@ -163,7 +163,7 @@ typedef enum {
     RX_PIN_NUMBER = TGT_RX,
     TX_PIN_NUMBER = TGT_TX,
     CTS_PIN_NUMBER = 31, //unused  ** REQUIRES A PROPER FIX **
-    RTS_PIN_NUMBER = 31, //unused 
+    RTS_PIN_NUMBER = 31, //unused
 
     // mBed interface Pins
     USBTX = TX_PIN_NUMBER,
@@ -188,6 +188,12 @@ typedef enum {
     PullUp = 3,
     PullDefault = PullUp
 } PinMode;
+
+typedef enum {
+  RADIO_MODE_MODE_Nrf_250Kbit = 0,
+  RADIO_MODE_MODE_Nrf_1Mbit = 1,
+  RADIO_MODE_MODE_Nrf_2Mbit = 2
+} RadioMode;
 
 #ifdef __cplusplus
 }
