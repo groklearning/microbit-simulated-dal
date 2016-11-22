@@ -783,6 +783,11 @@ process_client_radio_rx(const json_value* data) {
     pthread_mutex_lock(&code_lock);
     simulator_radio_frame_t f;
 
+    f.channel = channel->as.number;
+    f.base0 = base->as.number;
+    f.prefix0 = prefix->as.number;
+    f.data_rate = data_rate->as.number;
+
     const json_value_list* frame_bytes = frame->as.pairs;
     while (frame_bytes && f.len < 2048) {
       if (frame_bytes->value->type == JSON_VALUE_TYPE_NUMBER) {
