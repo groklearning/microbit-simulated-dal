@@ -915,7 +915,9 @@ simulator_radio_get_tx(simulator_radio_frame_t* f) {
 
 void
 simulator_radio_add_rx(simulator_radio_frame_t f) {
-  _radio_rx_frames.push(f);
+  if (f.channel == _radio_channel && f.base0 == _radio_base0 && f.prefix0 == _radio_prefix0 && f.data_rate == _radio_data_rate) {
+    _radio_rx_frames.push(f);
+  }
 }
 
 namespace {
