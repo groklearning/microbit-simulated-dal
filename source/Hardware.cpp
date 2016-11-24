@@ -739,10 +739,10 @@ get_gpio_pin(uint32_t pin) {
 }
 
 namespace {
-int16_t _accel_x = 0;
-int16_t _accel_y = 0;
-int16_t _accel_z = -1024;
-BasicGesture _accel_gesture = GESTURE_FACE_UP;
+volatile int16_t _accel_x = 0;
+volatile int16_t _accel_y = 0;
+volatile int16_t _accel_z = -1024;
+volatile BasicGesture _accel_gesture = GESTURE_FACE_UP;
 }
 
 void
@@ -764,9 +764,9 @@ get_accelerometer(int16_t* x, int16_t* y, int16_t* z, BasicGesture* g) {
 }
 
 namespace {
-int32_t _magnet_x = 0;
-int32_t _magnet_y = -20000;
-int32_t _magnet_z = 25000;
+volatile int32_t _magnet_x = 0;
+volatile int32_t _magnet_y = -20000;
+volatile int32_t _magnet_z = 25000;
 }
 
 void
@@ -786,7 +786,7 @@ get_magnetometer(int32_t* x, int32_t* y, int32_t* z) {
 }
 
 namespace {
-int32_t _temperature = 28;
+volatile int32_t _temperature = 28;
 }
 
 void
@@ -800,10 +800,10 @@ get_temperature(int32_t* t) {
 }
 
 namespace {
-bool _inject_random = false;
-int32_t _next_random = 0;
-int32_t _remaining_random = 0;
-int32_t _random_choice_count = -1;
+volatile bool _inject_random = false;
+volatile int32_t _next_random = 0;
+volatile int32_t _remaining_random = 0;
+volatile int32_t _random_choice_count = -1;
 char _random_choice_repr[20480] = {0};
 }
 
@@ -865,10 +865,10 @@ get_random_choice(int32_t* count, const char** result) {
 namespace {
 std::queue<simulator_radio_frame_t> _radio_tx_frames;
 std::queue<simulator_radio_frame_t> _radio_rx_frames;
-uint8_t _radio_channel = 7;
-uint32_t _radio_base0 = 0x75626974;
-uint8_t _radio_prefix0 = 0;
-uint8_t _radio_data_rate = RADIO_MODE_MODE_Nrf_1Mbit;
+volatile uint8_t _radio_channel = 7;
+volatile uint32_t _radio_base0 = 0x75626974;
+volatile uint8_t _radio_prefix0 = 0;
+volatile uint8_t _radio_data_rate = RADIO_MODE_MODE_Nrf_1Mbit;
 }
 
 void
@@ -910,6 +910,7 @@ simulator_radio_get_tx(simulator_radio_frame_t* f) {
   } else {
     *f = _radio_tx_frames.front();
     _radio_tx_frames.pop();
+    return true;
   }
 }
 
