@@ -865,10 +865,10 @@ get_random_choice(int32_t* count, const char** result) {
 namespace {
 std::queue<simulator_radio_frame_t> _radio_tx_frames;
 std::queue<simulator_radio_frame_t> _radio_rx_frames;
-uint8_t _radio_channel;
-uint32_t _radio_base0;
-uint8_t _radio_prefix0;
-uint8_t _radio_data_rate;
+uint8_t _radio_channel = 7;
+uint32_t _radio_base0 = 0x75626974;
+uint8_t _radio_prefix0 = 0;
+uint8_t _radio_data_rate = RADIO_MODE_MODE_Nrf_1Mbit;
 }
 
 void

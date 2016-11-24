@@ -108,7 +108,7 @@ bool get_random_choice(int32_t* count, const char** result);
 
 
 struct simulator_radio_frame_t {
-simulator_radio_frame_t() : len(0) {}
+simulator_radio_frame_t() : len(0), channel(7), base0(0x75626974), prefix0(0), data_rate(RADIO_MODE_MODE_Nrf_1Mbit) {}
   uint32_t len;
   char data[2048];
   uint8_t channel;
