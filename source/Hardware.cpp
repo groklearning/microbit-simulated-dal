@@ -877,6 +877,7 @@ simulator_radio_config(uint8_t channel, uint32_t base0, uint8_t prefix0, uint8_t
   _radio_base0 = base0;
   _radio_prefix0 = prefix0;
   _radio_data_rate = data_rate;
+  _radio_rx_frames = std::queue<simulator_radio_frame_t>();
 }
 
 void
