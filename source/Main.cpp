@@ -7,6 +7,7 @@ extern "C" void app_main();
 #include <sched.h>
 #include <setjmp.h>
 #include <signal.h>
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -109,6 +110,14 @@ uint32_t last_heartbeat = 0;
 
 uint32_t
 handle_timerfd_event(uint32_t ticks);
+}
+
+void appendf(char** str, const char* end, const char* format, ...) {
+  va_list args;
+  va_start(args, format);
+  int n = vsnprintf(*str, end-*str, format, args);
+  va_end(args);
+  *str += min(end-*str, n);
 }
 
 extern "C" {
@@ -284,15 +293,12 @@ uint32_t MICROBIT_PIN_MAP[23] = {
 void
 list_to_json(const char* field, char** json_ptr, char* json_end, uint32_t* values, size_t len) {
   if (len == 0) {
-    snprintf(*json_ptr, json_end - *json_ptr, "\"%s\": []", field);
-    *json_ptr += strnlen(*json_ptr, json_end - *json_ptr);
+    appendf(json_ptr, json_end, "\"%s\": []", field);
   } else {
-    snprintf(*json_ptr, json_end - *json_ptr, "\"%s\": [", field);
-    *json_ptr += strnlen(*json_ptr, json_end - *json_ptr);
+    appendf(json_ptr, json_end, "\"%s\": [", field);
 
     for (int i = 0; i < len; ++i) {
-      snprintf(*json_ptr, json_end - *json_ptr, "%d,", values[i]);
-      *json_ptr += strnlen(*json_ptr, json_end - *json_ptr);
+      appendf(json_ptr, json_end, "%d,", values[i]);
     }
 
     // Replace trailing comma with ']'.
@@ -359,22 +365,18 @@ check_gpio_updates() {
     char json[1024];
     char* json_ptr = json;
     char* json_end = json + sizeof(json);
-    snprintf(json_ptr, json_end - json_ptr,
+    appendf(&json_ptr, json_end,
              "[{ \"type\": \"microbit_pins\", \"ticks\": %d, \"data\": {", get_macro_ticks());
-    json_ptr += strnlen(json_ptr, json_end - json_ptr);
 
     list_to_json("p", &json_ptr, json_end, pins, sizeof(pins) / sizeof(uint32_t));
 
-    snprintf(json_ptr, json_end - json_ptr, ", ");
-    json_ptr += strnlen(json_ptr, json_end - json_ptr);
+    appendf(&json_ptr, json_end, ", ");
     list_to_json("pwmd", &json_ptr, json_end, pwm_dutycycle, sizeof(pwm_dutycycle) / sizeof(uint32_t));
 
-    snprintf(json_ptr, json_end - json_ptr, ", ");
-    json_ptr += strnlen(json_ptr, json_end - json_ptr);
+    appendf(&json_ptr, json_end, ", ");
     list_to_json("pwmp", &json_ptr, json_end, pwm_period, sizeof(pwm_period) / sizeof(uint32_t));
 
-    snprintf(json_ptr, json_end - json_ptr, "}}]\n");
-    json_ptr += strnlen(json_ptr, json_end - json_ptr);
+    appendf(&json_ptr, json_end, "}}]\n");
 
     write_to_updates(json, json_ptr - json, true);
 
@@ -423,14 +425,12 @@ check_led_updates() {
     char json[1024];
     char* json_ptr = json;
     char* json_end = json + sizeof(json);
-    snprintf(json_ptr, json_end - json_ptr,
+    appendf(&json_ptr, json_end,
              "[{ \"type\": \"microbit_leds\", \"ticks\": %d, \"data\": {", get_macro_ticks());
-    json_ptr += strnlen(json_ptr, json_end - json_ptr);
 
     list_to_json("b", &json_ptr, json_end, leds, sizeof(leds) / sizeof(uint32_t));
 
-    snprintf(json_ptr, json_end - json_ptr, "}}]\n");
-    json_ptr += strnlen(json_ptr, json_end - json_ptr);
+    appendf(&json_ptr, json_end, "}}]\n");
 
     write_to_updates(json, json_ptr - json, true);
 
@@ -452,9 +452,8 @@ check_random_updates() {
     char* json_ptr = json;
     char* json_end = json + sizeof(json);
 
-    snprintf(json_ptr, json_end - json_ptr,
+    appendf(&json_ptr, json_end,
              "[{ \"type\": \"random_state\", \"ticks\": %d, \"data\": { \"exceeded\": %s }}]\n", get_macro_ticks(), exceeded ? "true": "false");
-    json_ptr += strnlen(json_ptr, json_end - json_ptr);
 
     write_to_updates(json, json_ptr - json, true);
 
@@ -484,9 +483,8 @@ check_marker_failure_updates() {
     buffer_reserve(message_buf, 1);
     message_buf->data[message_buf->nbytes_used] = 0;
 
-    snprintf(json_ptr, json_end - json_ptr,
+    appendf(&json_ptr, json_end,
              "[{ \"type\": \"marker_failure\", \"ticks\": %d, \"data\": { \"category\": %s, \"message\": %s }}]\n", get_macro_ticks(), category_buf->data, message_buf->data);
-    json_ptr += strnlen(json_ptr, json_end - json_ptr);
 
     buffer_destroy(category_buf);
     buffer_destroy(message_buf);
@@ -509,22 +507,19 @@ check_radio_tx() {
     char* json_ptr = json;
     char* json_end = json + sizeof(json);
 
-    snprintf(json_ptr, json_end - json_ptr,
+    appendf(&json_ptr, json_end,
              "[{ \"type\": \"microbit_radio_tx\", \"ticks\": %d, \"data\": { \"frame\": [", get_macro_ticks());
-    json_ptr += strnlen(json_ptr, json_end - json_ptr);
 
     for (uint32_t i = 0; i < f.len; ++i) {
       if (i > 0) {
-	snprintf(json_ptr, json_end - json_ptr, ",%d", f.data[i]);
+	appendf(&json_ptr, json_end, ",%d", f.data[i]);
       } else {
-	snprintf(json_ptr, json_end - json_ptr, "%d", f.data[i]);
+	appendf(&json_ptr, json_end, "%d", f.data[i]);
       }
-      json_ptr += strnlen(json_ptr, json_end - json_ptr);
     }
 
-    snprintf(json_ptr, json_end - json_ptr,
+    appendf(&json_ptr, json_end,
              "], \"channel\": %d, \"base\": %d, \"prefix\": %d, \"data_rate\": %d }}]\n", f.channel, f.base0, f.prefix0, f.data_rate);
-    json_ptr += strnlen(json_ptr, json_end - json_ptr);
 
     write_to_updates(json, json_ptr - json, true);
   }
@@ -555,9 +550,8 @@ write_heartbeat() {
   char* json_ptr = json;
   char* json_end = json + sizeof(json);
 
-  snprintf(json_ptr, json_end - json_ptr,
+  appendf(&json_ptr, json_end,
 	   "[{ \"type\": \"microbit_heartbeat\", \"ticks\": %d, \"data\": { \"real_ticks\": \"%d\" }}]\n", get_macro_ticks(), expected_macro_ticks());
-  json_ptr += strnlen(json_ptr, json_end - json_ptr);
 
   write_to_updates(json, json_ptr - json, true);
 }
@@ -568,9 +562,8 @@ write_bye() {
   char* json_ptr = json;
   char* json_end = json + sizeof(json);
 
-  snprintf(json_ptr, json_end - json_ptr,
+  appendf(&json_ptr, json_end,
 	   "[{ \"type\": \"microbit_bye\", \"ticks\": %d, \"data\": { \"real_ticks\": \"%d\" }}]\n", get_macro_ticks(), expected_macro_ticks());
-  json_ptr += strnlen(json_ptr, json_end - json_ptr);
 
   write_to_updates(json, json_ptr - json, false);
 }
@@ -581,9 +574,8 @@ write_event_ack(const char* event_type, const char* ack_data_json) {
   char* json_ptr = json;
   char* json_end = json + sizeof(json);
 
-  snprintf(json_ptr, json_end - json_ptr,
+  appendf(&json_ptr, json_end,
 	   "[{ \"type\": \"microbit_ack\", \"ticks\": %d, \"data\": { \"type\": \"%s\", \"data\": %s }}]\n", get_macro_ticks(), event_type, ack_data_json ? ack_data_json : "{}");
-  json_ptr += strnlen(json_ptr, json_end - json_ptr);
 
   write_to_updates(json, json_ptr - json, false);
 }
@@ -779,6 +771,7 @@ process_client_radio_rx(const json_value* data) {
   const json_value* base = json_value_get(data, "base");
   const json_value* prefix = json_value_get(data, "prefix");
   const json_value* data_rate = json_value_get(data, "data_rate");
+  const json_value* sender_id = json_value_get(data, "sender_id");
   if (frame && channel && base && prefix && data_rate && frame->type == JSON_VALUE_TYPE_ARRAY && channel->type == JSON_VALUE_TYPE_NUMBER && base->type == JSON_VALUE_TYPE_NUMBER && prefix->type == JSON_VALUE_TYPE_NUMBER && data_rate->type == JSON_VALUE_TYPE_NUMBER) {
     pthread_mutex_lock(&code_lock);
     simulator_radio_frame_t f;
@@ -788,26 +781,46 @@ process_client_radio_rx(const json_value* data) {
     f.prefix0 = prefix->as.number;
     f.data_rate = data_rate->as.number;
 
+    char ack_json[4096];
+    char* ack_json_ptr = ack_json;
+    char* ack_json_end = ack_json + sizeof(ack_json);
+    appendf(&ack_json_ptr, ack_json_end, "{\"frame\": [");
+
     const json_value_list* frame_bytes = frame->as.pairs;
     while (frame_bytes && f.len < 2048) {
       if (frame_bytes->value->type == JSON_VALUE_TYPE_NUMBER) {
-	f.data[f.len] = static_cast<uint8_t>(frame_bytes->value->as.number);
+        uint8_t b = static_cast<uint8_t>(frame_bytes->value->as.number);
+
+	f.data[f.len] = b;
 	++f.len;
+
+        appendf(&ack_json_ptr, ack_json_end, "%u,", b);
       }
       frame_bytes = frame_bytes->next;
     }
 
+    if (*(ack_json_ptr-1) == ',') {
+      // Remove trailing comma.
+      ack_json_ptr -= 1;
+    }
+
+    appendf(&ack_json_ptr, ack_json_end, "], \"channel\": %d, \"base\": %d, \"prefix\": %d, \"data_rate\": %d", f.channel, f.base0, f.prefix0, f.data_rate);
+    if (sender_id && sender_id->type == JSON_VALUE_TYPE_NUMBER) {
+      appendf(&ack_json_ptr, ack_json_end, ", \"sender_id\": %d", static_cast<int32_t>(sender_id->as.number));
+    }
+    appendf(&ack_json_ptr, ack_json_end, "}");
+
     simulator_radio_add_rx(f);
     pthread_mutex_unlock(&code_lock);
+
+    // Make the code thread run with the new state.
+    signal_interrupt();
+
+    write_event_ack("microbit_radio_rx", ack_json);
   } else {
     fprintf(stderr, "micro:bit radio needs (frame, channel, base, prefix, data_rate).\n");
-    return;
+    write_event_ack("microbit_radio_rx", nullptr);
   }
-
-  // Make the code thread run with the new state.
-  signal_interrupt();
-
-  write_event_ack("microbit_radio_rx", nullptr);
 }
 
 void
