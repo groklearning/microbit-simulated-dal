@@ -117,7 +117,9 @@ simulator_radio_frame_t() : len(0), channel(7), base0(0x75626974), prefix0(0), d
   uint8_t data_rate;
 };
 
-void simulator_radio_config(uint8_t channel, uint32_t base0, uint8_t prefix0, uint8_t data_rate);
+void simulator_radio_config(bool enabled, uint8_t channel, uint32_t base0, uint8_t prefix0, uint8_t data_rate);
+void simulator_radio_get_config(bool* enabled, uint8_t* channel, uint32_t* base0, uint8_t* prefix0, uint8_t* data_rate);
+
 void simulator_radio_send(const uint8_t* buf, uint32_t len);
 bool simulator_radio_receive(uint8_t* buf, uint32_t* len);
 

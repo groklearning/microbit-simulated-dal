@@ -467,8 +467,10 @@ check_marker_failure_updates() {
   const char* message = nullptr;
 
   pthread_mutex_lock(&code_lock);
+  bool has_failure = get_marker_failure_event(&category, &message);
+  pthread_mutex_unlock(&code_lock);
 
-  if (get_marker_failure_event(&category, &message)) {
+  if (has_failure) {
     char json[20480];
     char* json_ptr = json;
     char* json_end = json + sizeof(json);
@@ -491,18 +493,21 @@ check_marker_failure_updates() {
 
     write_to_updates(json, json_ptr - json, true);
 
+    pthread_mutex_lock(&code_lock);
     set_marker_failure_event(nullptr, nullptr);
+    pthread_mutex_unlock(&code_lock);
   }
-
-  pthread_mutex_unlock(&code_lock);
 }
 
 void
 check_radio_tx() {
-  pthread_mutex_lock(&code_lock);
-
   simulator_radio_frame_t f;
-  if (simulator_radio_get_tx(&f)) {
+
+  pthread_mutex_lock(&code_lock);
+  bool has_frame = simulator_radio_get_tx(&f);
+  pthread_mutex_unlock(&code_lock);
+
+  if (has_frame) {
     char json[20480];
     char* json_ptr = json;
     char* json_end = json + sizeof(json);
@@ -523,8 +528,42 @@ check_radio_tx() {
 
     write_to_updates(json, json_ptr - json, true);
   }
+}
 
+void
+check_radio_config() {
+  static bool prev_enabled = false;
+  static uint8_t prev_channel = 0xff;
+  static uint32_t prev_base0 = 0;
+  static uint8_t prev_prefix0 = 0;
+  static uint8_t prev_data_rate = 0;
+
+  bool enabled = false;
+  uint8_t channel = 0;
+  uint32_t base0 = 0;
+  uint8_t prefix0 = 0;
+  uint8_t data_rate = 0;
+
+  pthread_mutex_lock(&code_lock);
+  simulator_radio_get_config(&enabled, &channel, &base0, &prefix0, &data_rate);
   pthread_mutex_unlock(&code_lock);
+
+  if (enabled != prev_enabled || channel != prev_channel || base0 != prev_base0 || prefix0 != prev_prefix0 || data_rate != prev_data_rate) {
+    char json[20480];
+    char* json_ptr = json;
+    char* json_end = json + sizeof(json);
+
+    appendf(&json_ptr, json_end,
+	    "[{ \"type\": \"microbit_radio_config\", \"ticks\": %d, \"data\": { \"enabled\": %s, \"channel\": %d, \"base\": %d, \"prefix\": %d, \"data_rate\": %d }}]\n", get_macro_ticks(), enabled ? "true": "false", channel, base0, prefix0, data_rate);
+
+    write_to_updates(json, json_ptr - json, true);
+
+    prev_enabled = enabled;
+    prev_channel = channel;
+    prev_base0 = base0;
+    prev_prefix0 = prefix0;
+    prev_data_rate = data_rate;
+  }
 }
 
 // Returns the number of macro ticks that we expect should have passed (based on the real clock).
@@ -957,6 +996,8 @@ handle_timerfd_event(uint32_t ticks) {
     check_random_updates();
     check_marker_failure_updates();
     check_radio_tx();
+    check_radio_config();
+
     macroticks_last_led_update = get_macro_ticks();
   }
 

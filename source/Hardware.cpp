@@ -865,6 +865,7 @@ get_random_choice(int32_t* count, const char** result) {
 namespace {
 std::queue<simulator_radio_frame_t> _radio_tx_frames;
 std::queue<simulator_radio_frame_t> _radio_rx_frames;
+volatile bool _radio_enabled = false;
 volatile uint8_t _radio_channel = 7;
 volatile uint32_t _radio_base0 = 0x75626974;
 volatile uint8_t _radio_prefix0 = 0;
@@ -872,12 +873,22 @@ volatile uint8_t _radio_data_rate = RADIO_MODE_MODE_Nrf_1Mbit;
 }
 
 void
-simulator_radio_config(uint8_t channel, uint32_t base0, uint8_t prefix0, uint8_t data_rate) {
+simulator_radio_config(bool enabled, uint8_t channel, uint32_t base0, uint8_t prefix0, uint8_t data_rate) {
+  _radio_enabled = enabled;
   _radio_channel = channel;
   _radio_base0 = base0;
   _radio_prefix0 = prefix0;
   _radio_data_rate = data_rate;
   _radio_rx_frames = std::queue<simulator_radio_frame_t>();
+}
+
+void
+simulator_radio_get_config(bool* enabled, uint8_t* channel, uint32_t* base0, uint8_t* prefix0, uint8_t* data_rate) {
+  *enabled = _radio_enabled;
+  *channel = _radio_channel;
+  *base0 = _radio_base0;
+  *prefix0 = _radio_prefix0;
+  *data_rate = _radio_data_rate;
 }
 
 void
