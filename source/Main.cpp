@@ -249,7 +249,7 @@ signal_interrupt() {
 
 // Run the MicroPython VM.
 void*
-code_thread(void*) {
+code_thread_main(void*) {
   while (true) {
     // If we attempt to shutdown or reboot, we will longjump back to here.
     if (setjmp(code_quit_jmp) == 0) {
@@ -1307,23 +1307,16 @@ run_simulator() {
     write_heartbeat();
   }
 
-  // Create threads.
-  typedef void* (*thread_start_fn)(void*);
-  thread_start_fn thread_fns[] = {&code_thread};
-  const int NUM_THREADS = sizeof(thread_fns) / sizeof(thread_start_fn);
-  pthread_t threads[NUM_THREADS];
-  for (int i = 0; i < NUM_THREADS; ++i) {
-    pthread_create(&threads[i], NULL, thread_fns[i], NULL);
-  }
+  // Create the code thread.
+  pthread_t code_thread;
+  pthread_create(&code_thread, NULL, &code_thread_main, NULL);
 
   // Run the main thread (on the main thread).
   main_thread();
 
   // After main terminates, join on all other threads.
-  for (int i = 0; i < NUM_THREADS; ++i) {
-    void* result;
-    pthread_join(threads[i], &result);
-  }
+  void* code_thread_result;
+  pthread_join(code_thread, &code_thread_result);
 
   pthread_mutex_destroy(&suspend_lock);
   pthread_cond_destroy(&suspend_wait);
