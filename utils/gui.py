@@ -16,13 +16,10 @@ import sys
 import time
 
 
-def debug(*args):
-  pass
-
-
 class MicrobitSimulator(object):
-  def __init__(self, program_path=None):
+  def __init__(self, program_path=None, interactive=False):
     self._program_path = program_path
+    self._interactive = interactive
 
     # Create a pipe to send client events and receive updates (must be inheritable by the simulator).
     self._client_events_pipe = os.pipe()
@@ -44,70 +41,72 @@ class MicrobitSimulator(object):
           'GROK_CLIENT_PIPE': str(self._client_events_pipe[0]),
           'GROK_UPDATES_PIPE': str(self._device_updates_pipe[1])
       }
-      # -t enables the heartbeat
-      cmds = ['/home/ubuntu/repos/bbcmicrobit-micropython/build/x86-linux-native-32bit/source/microbit-micropython', '-i']
+      cmds = ['/home/ubuntu/repos/bbcmicrobit-micropython/build/x86-linux-native-32bit/source/microbit-micropython']
       if self._program_path:
+        if self._interactive:
+          cmds.append('-i')
         cmds.append(self._program_path)
+
       self._microbit_child_process = subprocess.Popen(args=cmds, env=env, close_fds=False, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+
+      # Non-blocking reads from the simulator -- just read whatever is available when we epoll.
       fcntl.fcntl(self._microbit_child_process.stdout, fcntl.F_SETFL, os.O_NONBLOCK)
       fcntl.fcntl(self._device_updates_pipe[0], fcntl.F_SETFL, os.O_NONBLOCK)
 
+      # Create an epoll fd for simulator updates, simulator stdout, and local key events.
       self._ep = select.epoll()
       for fd in [self._device_updates_pipe[0], self._microbit_child_process.stdout, sys.stdin]:
         self._ep.register(fd)
+
     except Exception as e:
       print('Unable to run simulator: ' + str(e) + '.', file=sys.stderr)
 
   def running(self):
-    """
-    Returns True if the simulator is still running.
-    """
+    # Returns True if the simulator is still running.
     return self._microbit_child_process.poll() is None
 
   def terminate(self):
-    """
-    Terminate the simulator (if it hasn't already exited).
-    """
+    # Terminate the simulator (if it hasn't already exited).
     if not self._microbit_child_process or self._microbit_child_process.poll() is not None:
       return
 
     self._microbit_child_process.kill()
 
   def event(self, event):
-    """
-    Send an event to the simulator.
-    """
+    # Send an event to the simulator.
     event = '[' + json.dumps(event) + ']'
-    debug('      > sending event: {}'.format(event))
     os.write(self._client_events_pipe[1], (event + '\n').encode(encoding='utf-8'))
 
   def next_update(self):
+    # The updates can be batched from the simulator, but only return one at a time from the queue.
     if self._updates_queue:
-      return self._updates_queue[0]
+      return self._updates_queue.pop(0)
 
     #r_fds, w_fds, x_fds = select.select([self._device_updates_pipe[0], self._microbit_child_process.stdout, sys.stdin], [], [])
-    events = self._ep.poll(timeout=0.5)
+    events = self._ep.poll(timeout=2)
     for r, event_type in events:
       if r == self._device_updates_pipe[0]:
         lines = os.read(self._device_updates_pipe[0], 20000).decode().split('\n')
         for line in lines:
           if line:
             try:
+              # Add the batch to the queue.
               self._updates_queue.extend(json.loads(line))
             except Exception as e:
               print('Invalid json: ' + str(e), file=sys.stderr)
       elif r == self._microbit_child_process.stdout.fileno():
+        # Create a fake 'update' for stdout (serial) data.
         self._updates_queue.append({'type': 'stdout', 'data': self._microbit_child_process.stdout.read()})
       elif r == sys.stdin.fileno():
+        # Create a fake 'update' for local key events.
         self._updates_queue.append({'type': 'input'})
 
     if self._updates_queue:
-      return self._updates_queue[0]
+      # We got at least one update, return it.
+      return self._updates_queue.pop(0)
     else:
+      # Epoll timeout.
       return []
-
-  def pop_update(self):
-    return self._updates_queue.pop(0)
 
   def send_input(self, c):
     self._microbit_child_process.stdin.write(chr(c))
@@ -119,28 +118,43 @@ class CursesUI:
     self._scr = stdscr
     self._sim = simulator
 
+    # Allow Ctrl-C to be handled by us.
     curses.raw()
+
+    # Off LED
     curses.init_pair(1, curses.COLOR_WHITE, curses.COLOR_WHITE)
+    # On LED
     curses.init_pair(2, curses.COLOR_RED, curses.COLOR_RED)
+    # Active border
     curses.init_pair(3, curses.COLOR_GREEN, curses.COLOR_BLACK)
+    # Inactive border
     curses.init_pair(4, curses.COLOR_WHITE, curses.COLOR_BLUE)
+
+    # Non-blocking getch().
     self._scr.nodelay(1)
 
+    # Create a sub-window for the console, with a scrolling sub-sub-window.
     self._console = self._scr.subwin(16, 0)
     self._console_scroll = self._console.derwin(self._console.getmaxyx()[0]-2, self._console.getmaxyx()[1]-2, 1, 1)
     self._console_scroll.scrollok(True)
 
+    # Create a sub-window for the micro:bit.
     self._microbit = self._scr.subwin(16, 34, 0, (self._scr.getmaxyx()[1]-34)//2)
 
+    # micro:bit or console focus.
+    self._microbit_focus = True
+
+    # LED and button state.
     self._leds = [0]*25
     self._buttons = [0]*2
-    self._microbit_focus = False
 
+    # Draw initial UI.
     self.draw_buttons()
     self.draw_leds()
     self.focus_microbit()
 
   def write_console(self, c):
+    # Writes serial output (or local echo) to the console window, scrolling as necessary.
     self._console_scroll.addstr(c)
     self._console_scroll.refresh()
 
@@ -155,6 +169,7 @@ class CursesUI:
 
   def update_leds(self, leds):
     self._leds = leds
+    self.draw_leds()
 
   def draw_buttons(self):
     self._microbit.addstr(1, 12, 'micro:bit')
@@ -190,6 +205,7 @@ class CursesUI:
     self._console.box()
     self._console.attrset(curses.color_pair(0))
     self._console.refresh()
+    self._console_scroll.refresh()
 
   def push_button(self, b):
     self.toggle_button(b)
@@ -200,6 +216,18 @@ class CursesUI:
     self._buttons[b] = 1 - self._buttons[b]
     self._sim.event({'type': 'microbit_button', 'data': {'id': b, 'state': self._buttons[b]}})
     self.draw_buttons()
+
+  def show_help(self):
+    self.write_console('\nKeyboard shortcuts:\n')
+    self.write_console('  Ctrl-O  Toggle focus between micro:bit and console.\n')
+    self.write_console('  Ctrl-Q  Quit simulator.\n')
+    self.write_console('  Ctrl-C  Stop current micro:bit program.\n')
+    self.write_console('Shortcuts when micro:bit has focus:\n')
+    self.write_console('  A  Tap A button.\n')
+    self.write_console('  B  Tap B button.\n')
+    self.write_console('  Ctrl-A  Toggle A button.\n')
+    self.write_console('  Ctrl-B  Toggle B button.\n')
+    self.write_console('\n')
 
   def handle_key(self):
     k = self._scr.getch()
@@ -216,31 +244,40 @@ class CursesUI:
     elif k == 3:
       # And Ctrl-C always gets sent.
       self._sim.send_input(3)
+      return True
+    elif k == 31:
+      # Ctrl-?
+      self.show_help()
+      return True
 
     if self._microbit_focus:
       if k == 15:
         # Ctrl-O toggles console output.
         self.focus_console()
       if k == 1:
+        # Ctrl-A
         self.toggle_button(0)
       elif k == 2:
+        # Ctrl-B
         self.toggle_button(1)
       elif k == 97:
+        # A
         self.push_button(0)
       elif k == 98:
+        # B
         self.push_button(1)
     else:
       if k == 15:
         # Ctrl-O toggles console output.
         self.focus_microbit()
       elif k in (263, 330):
-        # Map Delete and Backspace to Ctrl-H
+        # Delete and Backspace --> Ctrl-H
         self._sim.send_input(8)
       elif k in (258,):
-        # Up arrow - history up
+        # Up arrow --> Ctrl-N (history up)
         self._sim.send_input(14)
       elif k in (259,):
-        # Down arrow - history down
+        # Down arrow - Ctrl-P (history down)
         self._sim.send_input(16)
       elif k >= 0 and k <= 255:
         # Local echo.
@@ -253,26 +290,57 @@ class CursesUI:
 
 
 def main(stdscr):
-  s = MicrobitSimulator(sys.argv[1])
+  # Emulate CPython's behavior:
+  #  - ./gui.py               - run REPL interactively.
+  #  - ./gui.py program.py    - terminate when the program finishes (or Ctrl-C).
+  #  - ./gui.py -i program.py - drop to REPL when program finishes (or Ctrl-C).
+  program_path = None
+  interactive = False
+  if len(sys.argv) == 2:
+    program_path = sys.argv[1]
+  elif len(sys.argv) == 3:
+    interactive = sys.argv[1] == '-i'
+    program_path = sys.argv[2]
+
+  s = MicrobitSimulator(program_path, interactive)
   s.start()
 
   ui = CursesUI(stdscr, s)
 
+  ui.write_console('micro:bit simulator demo\n')
+  ui.write_console('by Grok Learning -- https://groklearning.com/microbit\n')
+  ui.write_console('Press Ctrl-? for help.\n\n')
+
   try:
     while s.running():
+      # Keep waiting for:
+      #  - Updates from the simulator
+      #  - Stdout from the simulator
+      #  - Keyboard events (stdin)
       update = s.next_update()
       if update:
         if update['type'] == 'microbit_leds':
+          # Brightness array.
           ui.update_leds(update['data']['b'])
-          ui.draw_leds()
+        elif update['type'] == 'microbit_pins':
+          # Pin state/mode and PWM duty cycle & period.
+          pass
+        elif update['type'] == 'microbit_radio_tx':
+          # Radio data sent from micro:bit.
+          pass
+        elif update['type'] == 'microbit_ack':
+          # Acknowledgement of an event (e.g. button press).
+          pass
         elif update['type'] == 'stdout':
+          # Serial output.
           ui.write_console(update['data'])
         elif update['type'] == 'input':
+          # stdin - use curses to get key event.
           if not ui.handle_key():
             break
-        s.pop_update()
 
   finally:
+    # Send SIGKILL to the simulator.
     s.terminate()
 
 
