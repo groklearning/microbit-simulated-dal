@@ -39,9 +39,11 @@ class MicrobitSimulator(object):
     try:
       env = {
           'GROK_CLIENT_PIPE': str(self._client_events_pipe[0]),
-          'GROK_UPDATES_PIPE': str(self._device_updates_pipe[1])
+          'GROK_UPDATES_PIPE': str(self._device_updates_pipe[1]),
+          'PATH': os.getenv('PATH'),
       }
-      cmds = ['/home/ubuntu/repos/bbcmicrobit-micropython/build/x86-linux-native-32bit/source/microbit-micropython']
+      # Expect to find microbit-micropython on PATH.
+      cmds = ['microbit-micropython']
       if self._program_path:
         if self._interactive:
           cmds.append('-i')

@@ -32,6 +32,7 @@ extern "C" void app_main();
 #include "MicroBitAccelerometer.h"
 
 extern "C" {
+// Simple JSON library.
 #include "buffer.h"
 #include "json.h"
 }
@@ -41,10 +42,14 @@ namespace {
 pthread_cond_t interrupt_signal;
 pthread_mutex_t interrupt_signal_lock;
 
+// Used to wait for the code actually processing the interrupt.
 volatile bool interrupt_waiting = false;
 pthread_cond_t interrupt_delivered;
 pthread_mutex_t interrupt_delivered_lock;
 
+// File descriptor to write ___device_updates.
+int updates_fd = -1;
+// Writes to ___device_updates can come from either thread.
 pthread_mutex_t updates_file_lock;
 
 // In fast mode, every time we write a client update, we go to sleep until the marker
@@ -55,7 +60,8 @@ volatile bool suspend = false;
 pthread_cond_t suspend_wait;
 
 // Used to provide mutex for all state accessed by both the micropython VM and the main
-// simulator thread.
+// simulator thread. Any time the micropython VM is running, this lock must be held, and
+// any modification to state accessed by micropython must also hold this lock.
 pthread_mutex_t code_lock;
 
 // Set to cleanly shutdown the simulator.
@@ -65,6 +71,8 @@ volatile bool shutdown = false;
 // handled).
 volatile bool suppress_pin_led_updates = false;
 
+// We use setjmp to allow the VM to terminate. If it's restartable (not in debug mode), then the parent
+// process forks a new child.
 jmp_buf code_quit_jmp;
 
 // In interactive mode, we let the default behavior happen (microbit-micropython runs the
@@ -99,9 +107,6 @@ bool fast_mode = false;
 
 // Log every HEARTBEAT_TICKS macro ticks (to keep the marker synchronized).
 bool heartbeat_mode = false;
-
-// File descriptor to write ___device_updates.
-int updates_fd = -1;
 
 // In fast mode, in either WFI or the branch hook, this is how many ticks the microbit ticker
 // expected.
@@ -152,14 +157,13 @@ simulated_dal_micropy_vm_hook_loop() {
       }
       pthread_mutex_unlock(&suspend_lock);
     } else {
-      // Every 100 branches, wait for a timer tick.
-      // Should be fairly unnoticable for most programs, but will prevent tight loops using
-      // ~any user CPU time.
-      // While the marker is running (fast mode), this also enables the main thread to keep up with
-      // client events.
-      // fast_mode doesn't have the timer_fd, but on epoll timeout, it calls signal_interrupt which
-      // achieves
-      // the same thing.
+      // Every 100 branches, wait for a timer tick.  Should be fairly
+      // unnoticable for most programs, but will prevent tight loops
+      // using ~any user CPU time.  While the marker is running (fast
+      // mode), this also enables the main thread to keep up with
+      // client events.  fast_mode doesn't have the timer_fd, but on
+      // epoll timeout, it calls signal_interrupt which achieves the
+      // same thing.
       pthread_mutex_lock(&interrupt_signal_lock);
       pthread_cond_wait(&interrupt_signal, &interrupt_signal_lock);
       pthread_mutex_unlock(&interrupt_signal_lock);

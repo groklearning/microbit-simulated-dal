@@ -7,6 +7,7 @@
 #include "ErrorNo.h"
 #include "MESEvents.h"
 #include "ManagedString.h"
+#include "MicroBitPanic.h"
 #include "ManagedType.h"
 #include "Matrix4.h"
 #include "MicroBitCompat.h"
@@ -17,7 +18,6 @@
 #include "MicroBitHeapAllocator.h"
 #include "MicroBitI2C.h"
 #include "MicroBitImage.h"
-#include "MicroBitPanic.h"
 
 #include "MicroBitAccelerometer.h"
 #include "MicroBitButton.h"
