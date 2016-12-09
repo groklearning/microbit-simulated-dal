@@ -18,6 +18,8 @@ It supports the following hardware features:
  - Accelerometer
  - Temperature
 
+For more information, please contact [opensource@groklearning.com](opensource@groklearning.com).
+
 ## How it works
  
 The idea is that the MicroPython firmware runs almost unmodified, but compiled for x86 instead of ARM. Any calls made to the DAL or mbed APIs are instead implemented by this library and provide equivalent functionality.
