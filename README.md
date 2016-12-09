@@ -29,7 +29,7 @@ Input and output to the simulator works in three ways:
  - Any device state changes/updates (e.g. LEDs, pins, radio, etc) are written to an output file (`___device_updates`) in the cwd.
  - Any input events (buttons, driving pins, accelerometer, compass, etc) are read from an input file (`___client_events`).
 
-Instead of using files for device updates or input, two environment variables can be set with the file descriptor of a pipe. GROK_UPDATES_PIPE and GROK_CLIENT_PIPE. Inside the Grok server, these pipes are hooked up to a web socket back to the browser.
+Instead of using files for device updates or input, two environment variables can be set with the file descriptor of a pipe. GROK_UPDATES_PIPE and GROK_CLIENT_PIPE. Inside the Grok server, these pipes are hooked up to a web socket back to the browser. For an example host application, see the command line gui below.
 
 There are a few places where the MicroPython firmware bypasses the DAL, so we also provide implementations of the underlying APIs provided by mbed (e.g. `nrf_gpio_pin_set()`).
 
