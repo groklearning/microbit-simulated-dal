@@ -114,8 +114,17 @@ Type "help()" for more information.
 
 Ctrl-C and Ctrl-D behave like on the serial console with a real micro:bit.
 
+### Command-line GUI
+The idea is that this simulator runs with some sort of frontend that is managing stdin/stdout/device_update/client_events. I plan to add a simple web server and HTML frontend that uses this.
+
+In the meantime, there's a very simple curses-based command-line UI in `utils/gui.py`. Use Ctrl-O to switch between focusing the micro:bit or the serial console.
+
+```bash
+path/to/microbit-simulated-dal/utils/gui.py [-i [path/to/program.py]]
+```
+
 ## Input/output file format.
-Each line of both `___client_events` and `___device_updates` is a complete JSON blob. This blob should be a list of objects. Here's an example output of `___device_updates` for the micro:bit starting up and showing Image.HEART.
+Each line of both `___client_events` and `___device_updates` (or their corresponding pipes, see above) is a complete JSON blob. This blob should be a list of objects. Here's an example output of `___device_updates` for the micro:bit starting up and showing Image.HEART.
 
 ```json
 [{ "type": "microbit_leds", "ticks": 1, "data": {"b": [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]}}]
@@ -135,3 +144,5 @@ Here's an example line in `___client_events` to push down button A.
 ```
 
 Ticks are in "macro ticks" - i.e. 6ms. The simulator attempts to synchronize to real time as closely as possible.
+
+You can use `utils/send-button.sh` to write to `___client_events` of a currently-running `microbit-micropython` process.
