@@ -1,13 +1,13 @@
 {
   "name": "microbit-simulated-dal",
-  "version": "0.0.0",
+  "version": "1.4.19-micropython",
   "description": "Simulated implementation of the micro:bit DAL (lancaster-university/microbit-dal)",
   "keywords": [
     "microbit"
   ],
   "author": "Jim Mussared <jim@groklearning.com>",
-  "homepage": "http://groklearning.com/",
-  "license": "Apache-2.0",
+  "homepage": "https://github.com/groklearning/microbit-simulated-dal",
+  "license": "MIT",
   "dependencies": {
   },
   "extraIncludes": [
