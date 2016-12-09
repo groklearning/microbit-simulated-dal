@@ -189,46 +189,43 @@ MicroBitCompass::whoAmI() {
 }
 int
 MicroBitCompass::getX(MicroBitCoordinateSystem system) {
-  switch (system)
-    {
-        case SIMPLE_CARTESIAN:
-            return sample.x;
+  switch (system) {
+    case SIMPLE_CARTESIAN:
+      return sample.x;
 
-        case NORTH_EAST_DOWN:
-            return -sample.y;
+    case NORTH_EAST_DOWN:
+      return -sample.y;
 
-        case RAW:
-        default:
-            return sample.x;
-    }
+    case RAW:
+    default:
+      return sample.x;
+  }
 }
 int
 MicroBitCompass::getY(MicroBitCoordinateSystem system) {
-  switch (system)
-    {
-        case SIMPLE_CARTESIAN:
-            return -sample.y;
+  switch (system) {
+    case SIMPLE_CARTESIAN:
+      return -sample.y;
 
-        case NORTH_EAST_DOWN:
-            return sample.x;
+    case NORTH_EAST_DOWN:
+      return sample.x;
 
-        case RAW:
-        default:
-            return sample.y;
-    }
+    case RAW:
+    default:
+      return sample.y;
+  }
 }
 int
 MicroBitCompass::getZ(MicroBitCoordinateSystem system) {
-  switch (system)
-    {
-        case SIMPLE_CARTESIAN:
-        case NORTH_EAST_DOWN:
-            return -sample.z;
+  switch (system) {
+    case SIMPLE_CARTESIAN:
+    case NORTH_EAST_DOWN:
+      return -sample.z;
 
-        case RAW:
-        default:
-            return sample.z;
-    }
+    case RAW:
+    default:
+      return sample.z;
+  }
 }
 int
 MicroBitCompass::getFieldStrength() {

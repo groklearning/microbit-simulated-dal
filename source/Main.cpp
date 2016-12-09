@@ -61,7 +61,8 @@ pthread_mutex_t code_lock;
 // Set to cleanly shutdown the simulator.
 volatile bool shutdown = false;
 
-// Set to disable checking led/gpio state (e.g. while fastforwarding time waiting for a Ctrl-C to be handled).
+// Set to disable checking led/gpio state (e.g. while fastforwarding time waiting for a Ctrl-C to be
+// handled).
 volatile bool suppress_pin_led_updates = false;
 
 jmp_buf code_quit_jmp;
@@ -102,22 +103,23 @@ bool heartbeat_mode = false;
 // File descriptor to write ___device_updates.
 int updates_fd = -1;
 
-// In fast mode, in either WFI or the branch hook, this is how many ticks the microbit ticker expected.
+// In fast mode, in either WFI or the branch hook, this is how many ticks the microbit ticker
+// expected.
 uint32_t fast_mode_ticks_until_fire_timer = 75;
 
 // When did we last write a heartbeat, in macro ticks (if enabled in heartbeat_mode).
 uint32_t last_heartbeat = 0;
 
-uint32_t
-handle_timerfd_event(uint32_t ticks);
+uint32_t handle_timerfd_event(uint32_t ticks);
 }
 
-void appendf(char** str, const char* end, const char* format, ...) {
+void
+appendf(char** str, const char* end, const char* format, ...) {
   va_list args;
   va_start(args, format);
-  int n = vsnprintf(*str, end-*str, format, args);
+  int n = vsnprintf(*str, end - *str, format, args);
   va_end(args);
-  *str += min(end-*str, n);
+  *str += min(end - *str, n);
 }
 
 extern "C" {
@@ -146,15 +148,17 @@ simulated_dal_micropy_vm_hook_loop() {
 
       pthread_mutex_lock(&suspend_lock);
       if (suspend) {
-	pthread_cond_wait(&suspend_wait, &suspend_lock);
+        pthread_cond_wait(&suspend_wait, &suspend_lock);
       }
       pthread_mutex_unlock(&suspend_lock);
     } else {
       // Every 100 branches, wait for a timer tick.
       // Should be fairly unnoticable for most programs, but will prevent tight loops using
       // ~any user CPU time.
-      // While the marker is running (fast mode), this also enables the main thread to keep up with client events.
-      // fast_mode doesn't have the timer_fd, but on epoll timeout, it calls signal_interrupt which achieves
+      // While the marker is running (fast mode), this also enables the main thread to keep up with
+      // client events.
+      // fast_mode doesn't have the timer_fd, but on epoll timeout, it calls signal_interrupt which
+      // achieves
       // the same thing.
       pthread_mutex_lock(&interrupt_signal_lock);
       pthread_cond_wait(&interrupt_signal, &interrupt_signal_lock);
@@ -306,7 +310,8 @@ list_to_json(const char* field, char** json_ptr, char* json_end, uint32_t* value
   }
 }
 
-void write_to_updates(const void* buf, size_t count, bool should_suspend = false) {
+void
+write_to_updates(const void* buf, size_t count, bool should_suspend = false) {
   pthread_mutex_lock(&updates_file_lock);
   if (should_suspend && fast_mode) {
     pthread_mutex_lock(&suspend_lock);
@@ -351,27 +356,28 @@ check_gpio_updates() {
       // Get the simulated pin state.
       pins[i] = get_gpio_pin(pin).get_state();
       if (pins[i] == GPIO_PIN_OUTPUT_PWM) {
-	pwm_dutycycle[i] = get_gpio_pin(pin).get_pwm();
-	pwm_period[i] = get_gpio_pin(pin).get_pwm_period();
+        pwm_dutycycle[i] = get_gpio_pin(pin).get_pwm();
+        pwm_period[i] = get_gpio_pin(pin).get_pwm_period();
       }
     }
   }
 
   pthread_mutex_unlock(&code_lock);
 
-  if (memcmp(pins, prev_pins, sizeof(prev_pins)) != 0
-      || memcmp(pwm_dutycycle, prev_pwm_dutycycle, sizeof(prev_pwm_dutycycle)) != 0
-      || memcmp(pwm_period, prev_pwm_period, sizeof(prev_pwm_period)) != 0) {
+  if (memcmp(pins, prev_pins, sizeof(prev_pins)) != 0 ||
+      memcmp(pwm_dutycycle, prev_pwm_dutycycle, sizeof(prev_pwm_dutycycle)) != 0 ||
+      memcmp(pwm_period, prev_pwm_period, sizeof(prev_pwm_period)) != 0) {
     char json[1024];
     char* json_ptr = json;
     char* json_end = json + sizeof(json);
-    appendf(&json_ptr, json_end,
-             "[{ \"type\": \"microbit_pins\", \"ticks\": %d, \"data\": {", get_macro_ticks());
+    appendf(&json_ptr, json_end, "[{ \"type\": \"microbit_pins\", \"ticks\": %d, \"data\": {",
+            get_macro_ticks());
 
     list_to_json("p", &json_ptr, json_end, pins, sizeof(pins) / sizeof(uint32_t));
 
     appendf(&json_ptr, json_end, ", ");
-    list_to_json("pwmd", &json_ptr, json_end, pwm_dutycycle, sizeof(pwm_dutycycle) / sizeof(uint32_t));
+    list_to_json("pwmd", &json_ptr, json_end, pwm_dutycycle,
+                 sizeof(pwm_dutycycle) / sizeof(uint32_t));
 
     appendf(&json_ptr, json_end, ", ");
     list_to_json("pwmp", &json_ptr, json_end, pwm_period, sizeof(pwm_period) / sizeof(uint32_t));
@@ -425,8 +431,8 @@ check_led_updates() {
     char json[1024];
     char* json_ptr = json;
     char* json_end = json + sizeof(json);
-    appendf(&json_ptr, json_end,
-             "[{ \"type\": \"microbit_leds\", \"ticks\": %d, \"data\": {", get_macro_ticks());
+    appendf(&json_ptr, json_end, "[{ \"type\": \"microbit_leds\", \"ticks\": %d, \"data\": {",
+            get_macro_ticks());
 
     list_to_json("b", &json_ptr, json_end, leds, sizeof(leds) / sizeof(uint32_t));
 
@@ -453,7 +459,8 @@ check_random_updates() {
     char* json_end = json + sizeof(json);
 
     appendf(&json_ptr, json_end,
-             "[{ \"type\": \"random_state\", \"ticks\": %d, \"data\": { \"exceeded\": %s }}]\n", get_macro_ticks(), exceeded ? "true": "false");
+            "[{ \"type\": \"random_state\", \"ticks\": %d, \"data\": { \"exceeded\": %s }}]\n",
+            get_macro_ticks(), exceeded ? "true" : "false");
 
     write_to_updates(json, json_ptr - json, true);
 
@@ -486,7 +493,9 @@ check_marker_failure_updates() {
     message_buf->data[message_buf->nbytes_used] = 0;
 
     appendf(&json_ptr, json_end,
-             "[{ \"type\": \"marker_failure\", \"ticks\": %d, \"data\": { \"category\": %s, \"message\": %s }}]\n", get_macro_ticks(), category_buf->data, message_buf->data);
+            "[{ \"type\": \"marker_failure\", \"ticks\": %d, \"data\": { \"category\": %s, "
+            "\"message\": %s }}]\n",
+            get_macro_ticks(), category_buf->data, message_buf->data);
 
     buffer_destroy(category_buf);
     buffer_destroy(message_buf);
@@ -513,18 +522,20 @@ check_radio_tx() {
     char* json_end = json + sizeof(json);
 
     appendf(&json_ptr, json_end,
-             "[{ \"type\": \"microbit_radio_tx\", \"ticks\": %d, \"data\": { \"frame\": [", get_macro_ticks());
+            "[{ \"type\": \"microbit_radio_tx\", \"ticks\": %d, \"data\": { \"frame\": [",
+            get_macro_ticks());
 
     for (uint32_t i = 0; i < f.len; ++i) {
       if (i > 0) {
-	appendf(&json_ptr, json_end, ",%d", f.data[i]);
+        appendf(&json_ptr, json_end, ",%d", f.data[i]);
       } else {
-	appendf(&json_ptr, json_end, "%d", f.data[i]);
+        appendf(&json_ptr, json_end, "%d", f.data[i]);
       }
     }
 
     appendf(&json_ptr, json_end,
-             "], \"channel\": %d, \"base\": %d, \"prefix\": %d, \"data_rate\": %d }}]\n", f.channel, f.base0, f.prefix0, f.data_rate);
+            "], \"channel\": %d, \"base\": %d, \"prefix\": %d, \"data_rate\": %d }}]\n", f.channel,
+            f.base0, f.prefix0, f.data_rate);
 
     write_to_updates(json, json_ptr - json, true);
   }
@@ -548,13 +559,16 @@ check_radio_config() {
   simulator_radio_get_config(&enabled, &channel, &base0, &prefix0, &data_rate);
   pthread_mutex_unlock(&code_lock);
 
-  if (enabled != prev_enabled || channel != prev_channel || base0 != prev_base0 || prefix0 != prev_prefix0 || data_rate != prev_data_rate) {
+  if (enabled != prev_enabled || channel != prev_channel || base0 != prev_base0 ||
+      prefix0 != prev_prefix0 || data_rate != prev_data_rate) {
     char json[20480];
     char* json_ptr = json;
     char* json_end = json + sizeof(json);
 
     appendf(&json_ptr, json_end,
-	    "[{ \"type\": \"microbit_radio_config\", \"ticks\": %d, \"data\": { \"enabled\": %s, \"channel\": %d, \"base\": %d, \"prefix\": %d, \"data_rate\": %d }}]\n", get_macro_ticks(), enabled ? "true": "false", channel, base0, prefix0, data_rate);
+            "[{ \"type\": \"microbit_radio_config\", \"ticks\": %d, \"data\": { \"enabled\": %s, "
+            "\"channel\": %d, \"base\": %d, \"prefix\": %d, \"data_rate\": %d }}]\n",
+            get_macro_ticks(), enabled ? "true" : "false", channel, base0, prefix0, data_rate);
 
     write_to_updates(json, json_ptr - json, true);
 
@@ -590,7 +604,9 @@ write_heartbeat() {
   char* json_end = json + sizeof(json);
 
   appendf(&json_ptr, json_end,
-	   "[{ \"type\": \"microbit_heartbeat\", \"ticks\": %d, \"data\": { \"real_ticks\": \"%d\" }}]\n", get_macro_ticks(), expected_macro_ticks());
+          "[{ \"type\": \"microbit_heartbeat\", \"ticks\": %d, \"data\": { \"real_ticks\": \"%d\" "
+          "}}]\n",
+          get_macro_ticks(), expected_macro_ticks());
 
   write_to_updates(json, json_ptr - json, true);
 }
@@ -602,7 +618,8 @@ write_bye() {
   char* json_end = json + sizeof(json);
 
   appendf(&json_ptr, json_end,
-	   "[{ \"type\": \"microbit_bye\", \"ticks\": %d, \"data\": { \"real_ticks\": \"%d\" }}]\n", get_macro_ticks(), expected_macro_ticks());
+          "[{ \"type\": \"microbit_bye\", \"ticks\": %d, \"data\": { \"real_ticks\": \"%d\" }}]\n",
+          get_macro_ticks(), expected_macro_ticks());
 
   write_to_updates(json, json_ptr - json, false);
 }
@@ -614,7 +631,9 @@ write_event_ack(const char* event_type, const char* ack_data_json) {
   char* json_end = json + sizeof(json);
 
   appendf(&json_ptr, json_end,
-	   "[{ \"type\": \"microbit_ack\", \"ticks\": %d, \"data\": { \"type\": \"%s\", \"data\": %s }}]\n", get_macro_ticks(), event_type, ack_data_json ? ack_data_json : "{}");
+          "[{ \"type\": \"microbit_ack\", \"ticks\": %d, \"data\": { \"type\": \"%s\", \"data\": "
+          "%s }}]\n",
+          get_macro_ticks(), event_type, ack_data_json ? ack_data_json : "{}");
 
   write_to_updates(json, json_ptr - json, false);
 }
@@ -674,7 +693,8 @@ process_client_temperature(const json_value* data) {
   write_event_ack("temperature", ack_json);
 }
 
-BasicGesture get_gesture_from_name(const char* name) {
+BasicGesture
+get_gesture_from_name(const char* name) {
   if (strcasecmp(name, "up") == 0) {
     return GESTURE_UP;
   }
@@ -735,7 +755,6 @@ process_client_accel(const json_value* data) {
     }
   }
 
-
   pthread_mutex_lock(&code_lock);
   set_accelerometer(x->as.number, y->as.number, z->as.number, g);
   pthread_mutex_unlock(&code_lock);
@@ -744,7 +763,8 @@ process_client_accel(const json_value* data) {
   signal_interrupt();
 
   char ack_json[1024];
-  snprintf(ack_json, sizeof(ack_json), "{\"x\": %f, \"y\": %f, \"z\": %f, \"gesture\": \"%s\"}", x->as.number, y->as.number, z->as.number, gesture_name);
+  snprintf(ack_json, sizeof(ack_json), "{\"x\": %f, \"y\": %f, \"z\": %f, \"gesture\": \"%s\"}",
+           x->as.number, y->as.number, z->as.number, gesture_name);
   write_event_ack("accelerometer", ack_json);
 }
 
@@ -770,7 +790,8 @@ process_client_magnet(const json_value* data) {
   signal_interrupt();
 
   char ack_json[1024];
-  snprintf(ack_json, sizeof(ack_json), "{\"x\": %f, \"y\": %f, \"z\": %f}", x->as.number, y->as.number, z->as.number);
+  snprintf(ack_json, sizeof(ack_json), "{\"x\": %f, \"y\": %f, \"z\": %f}", x->as.number,
+           y->as.number, z->as.number);
   write_event_ack("magnetometer", ack_json);
 }
 
@@ -781,7 +802,8 @@ void
 process_client_pins(const json_value* data) {
   const json_value* pin = json_value_get(data, "pin");
   const json_value* voltage = json_value_get(data, "voltage");
-  if (!pin || !voltage || pin->type != JSON_VALUE_TYPE_NUMBER || voltage->type != JSON_VALUE_TYPE_NUMBER) {
+  if (!pin || !voltage || pin->type != JSON_VALUE_TYPE_NUMBER ||
+      voltage->type != JSON_VALUE_TYPE_NUMBER) {
     fprintf(stderr, "Pin number or voltage missing.\n");
     return;
   }
@@ -811,7 +833,9 @@ process_client_radio_rx(const json_value* data) {
   const json_value* prefix = json_value_get(data, "prefix");
   const json_value* data_rate = json_value_get(data, "data_rate");
   const json_value* sender_id = json_value_get(data, "sender_id");
-  if (frame && channel && base && prefix && data_rate && frame->type == JSON_VALUE_TYPE_ARRAY && channel->type == JSON_VALUE_TYPE_NUMBER && base->type == JSON_VALUE_TYPE_NUMBER && prefix->type == JSON_VALUE_TYPE_NUMBER && data_rate->type == JSON_VALUE_TYPE_NUMBER) {
+  if (frame && channel && base && prefix && data_rate && frame->type == JSON_VALUE_TYPE_ARRAY &&
+      channel->type == JSON_VALUE_TYPE_NUMBER && base->type == JSON_VALUE_TYPE_NUMBER &&
+      prefix->type == JSON_VALUE_TYPE_NUMBER && data_rate->type == JSON_VALUE_TYPE_NUMBER) {
     pthread_mutex_lock(&code_lock);
     simulator_radio_frame_t f;
 
@@ -830,22 +854,25 @@ process_client_radio_rx(const json_value* data) {
       if (frame_bytes->value->type == JSON_VALUE_TYPE_NUMBER) {
         uint8_t b = static_cast<uint8_t>(frame_bytes->value->as.number);
 
-	f.data[f.len] = b;
-	++f.len;
+        f.data[f.len] = b;
+        ++f.len;
 
         appendf(&ack_json_ptr, ack_json_end, "%u,", b);
       }
       frame_bytes = frame_bytes->next;
     }
 
-    if (*(ack_json_ptr-1) == ',') {
+    if (*(ack_json_ptr - 1) == ',') {
       // Remove trailing comma.
       ack_json_ptr -= 1;
     }
 
-    appendf(&ack_json_ptr, ack_json_end, "], \"channel\": %d, \"base\": %d, \"prefix\": %d, \"data_rate\": %d", f.channel, f.base0, f.prefix0, f.data_rate);
+    appendf(&ack_json_ptr, ack_json_end,
+            "], \"channel\": %d, \"base\": %d, \"prefix\": %d, \"data_rate\": %d", f.channel,
+            f.base0, f.prefix0, f.data_rate);
     if (sender_id && sender_id->type == JSON_VALUE_TYPE_NUMBER) {
-      appendf(&ack_json_ptr, ack_json_end, ", \"sender_id\": %d", static_cast<int32_t>(sender_id->as.number));
+      appendf(&ack_json_ptr, ack_json_end, ", \"sender_id\": %d",
+              static_cast<int32_t>(sender_id->as.number));
     }
     appendf(&ack_json_ptr, ack_json_end, "}");
 
@@ -868,11 +895,13 @@ process_client_random(const json_value* data) {
   const json_value* repeat = json_value_get(data, "repeat");
   const json_value* choice_count = json_value_get(data, "choice_count");
   const json_value* choice_result = json_value_get(data, "choice_result");
-  if (next && repeat && next->type == JSON_VALUE_TYPE_NUMBER && repeat->type == JSON_VALUE_TYPE_NUMBER) {
+  if (next && repeat && next->type == JSON_VALUE_TYPE_NUMBER &&
+      repeat->type == JSON_VALUE_TYPE_NUMBER) {
     pthread_mutex_lock(&code_lock);
     set_random_state(next->as.number, repeat->as.number);
     pthread_mutex_unlock(&code_lock);
-  } else if (choice_count && choice_result && choice_count->type == JSON_VALUE_TYPE_NUMBER && choice_result->type == JSON_VALUE_TYPE_STRING) {
+  } else if (choice_count && choice_result && choice_count->type == JSON_VALUE_TYPE_NUMBER &&
+             choice_result->type == JSON_VALUE_TYPE_STRING) {
     pthread_mutex_lock(&code_lock);
     set_random_choice(choice_count->as.number, choice_result->as.string);
     pthread_mutex_unlock(&code_lock);
@@ -909,10 +938,10 @@ process_client_json(const json_value* json) {
       fprintf(stderr, "Event missing type and/or data.\n");
     } else {
       if (strncmp(event_type->as.string, "resume", 6) == 0) {
-	pthread_mutex_lock(&suspend_lock);
-	suspend = false;
-	pthread_cond_broadcast(&suspend_wait);
-	pthread_mutex_unlock(&suspend_lock);
+        pthread_mutex_lock(&suspend_lock);
+        suspend = false;
+        pthread_cond_broadcast(&suspend_wait);
+        pthread_mutex_unlock(&suspend_lock);
       } else if (strncmp(event_type->as.string, "microbit_button", 15) == 0) {
         // Button state change.
         process_client_button(event_data);
@@ -1107,16 +1136,18 @@ main_thread() {
 
     if (nfds == -1) {
       if (errno == EINTR) {
-	// Timeout or interrupted.
-	// Allow the vm branch hook to proceed.
-        // Continue so that we'll catch the shutdown flag above (if it's set, otherwise continue as normal).
+        // Timeout or interrupted.
+        // Allow the vm branch hook to proceed.
+        // Continue so that we'll catch the shutdown flag above (if it's set, otherwise continue as
+        // normal).
         continue;
       }
       perror("epoll wait\n");
       exit(1);
     }
 
-    // In all modes, make sure Ctrl-C is handled in a timely manner - see if our SIGINT handler has been called.
+    // In all modes, make sure Ctrl-C is handled in a timely manner - see if our SIGINT handler has
+    // been called.
     if (sigint_requested) {
       sigint_requested = false;
 
@@ -1143,7 +1174,8 @@ main_thread() {
 
     // Handle epoll timeout.
     // In fast mode, use this to keep the code thread running by calling signal_interrupt().
-    // In other modes this never happens because the timer_fd fires more quickly than the epoll timeout.
+    // In other modes this never happens because the timer_fd fires more quickly than the epoll
+    // timeout.
     if (nfds == 0) {
       // Keep the code thread running.
       signal_interrupt();
@@ -1152,7 +1184,7 @@ main_thread() {
 
     for (int n = 0; n < nfds; ++n) {
       if (events[n].data.fd == STDIN_FILENO) {
-	// Input from stdin.
+        // Input from stdin.
         uint8_t buf[10240];
         ssize_t len = read(STDIN_FILENO, &buf, sizeof(buf));
         if (len == -1) {
@@ -1160,16 +1192,16 @@ main_thread() {
         }
         pthread_mutex_lock(&code_lock);
         for (ssize_t i = 0; i < len; ++i) {
-	  if (buf[i] == 0x04) {
-	    // Make sure that the Ctrl-D gets handled by something.
-	    signal_pending_since = get_macro_ticks();
-	  }
-	  serial_add_byte(buf[i]);
+          if (buf[i] == 0x04) {
+            // Make sure that the Ctrl-D gets handled by something.
+            signal_pending_since = get_macro_ticks();
+          }
+          serial_add_byte(buf[i]);
         }
         pthread_mutex_unlock(&code_lock);
         signal_interrupt();
       } else if (notify_fd != -1 && events[n].data.fd == notify_fd) {
-	// A change occured to the ___client_events file.
+        // A change occured to the ___client_events file.
         uint8_t buf[4096] __attribute__((aligned(__alignof__(inotify_event))));
         ssize_t len = read(notify_fd, buf, sizeof(buf));
         if (len == -1) {
@@ -1184,30 +1216,30 @@ main_thread() {
           }
         }
       } else if (events[n].data.fd == client_fd) {
-	// A write happened to the client events pipe.
+        // A write happened to the client events pipe.
         process_client_event(client_fd);
       } else if (events[n].data.fd == timer_fd) {
-	// Timer callback.
+        // Timer callback.
         uint64_t t;
         int status = read(timer_fd, &t, sizeof(uint64_t));
 
-	// Call the timer, telling it how many ticks have elapsed since the last call.
-	// It returns the number of ticks until the next call.
-	ticks_until_fire_timer = handle_timerfd_event(ticks_until_fire_timer);
+        // Call the timer, telling it how many ticks have elapsed since the last call.
+        // It returns the number of ticks until the next call.
+        ticks_until_fire_timer = handle_timerfd_event(ticks_until_fire_timer);
 
-	// Figure out how long to set the timerfd for. One tick is 16us.
-	uint32_t sleep_nsec = 16000 * ticks_until_fire_timer;
+        // Figure out how long to set the timerfd for. One tick is 16us.
+        uint32_t sleep_nsec = 16000 * ticks_until_fire_timer;
 
-	// But scale so that we converge on 'real' time.
-	uint32_t e = expected_macro_ticks();
-	if (get_macro_ticks() > e) {
-	  sleep_nsec = (sleep_nsec * 11) / 10;
-	} else if (get_macro_ticks() < e) {
-	  uint32_t d = std::min(9U, e - get_macro_ticks());
-	  sleep_nsec = (sleep_nsec * (10-d)) / 10;
-	}
+        // But scale so that we converge on 'real' time.
+        uint32_t e = expected_macro_ticks();
+        if (get_macro_ticks() > e) {
+          sleep_nsec = (sleep_nsec * 11) / 10;
+        } else if (get_macro_ticks() < e) {
+          uint32_t d = std::min(9U, e - get_macro_ticks());
+          sleep_nsec = (sleep_nsec * (10 - d)) / 10;
+        }
 
-	// Reset the timer_fd.
+        // Reset the timer_fd.
         timer_spec.it_value.tv_nsec = sleep_nsec;
         timerfd_settime(timer_fd, 0, &timer_spec, NULL);
       }
@@ -1380,23 +1412,23 @@ main(int argc, char** argv) {
   for (int i = 1; i < argc; ++i) {
     if (strlen(argv[i]) > 0) {
       if (argv[i][0] == '-') {
-	if (argv[i][1] == 'i') {
-	  interactive_override = true;
-	} else if (argv[i][1] == 't') {
-	  heartbeat_mode = true;
-	} else if (argv[i][1] == 'f') {
-	  fast_mode = true;
-	} else if (argv[i][1] == 'd') {
-	  debug_mode = true;
-	}
+        if (argv[i][1] == 'i') {
+          interactive_override = true;
+        } else if (argv[i][1] == 't') {
+          heartbeat_mode = true;
+        } else if (argv[i][1] == 'f') {
+          fast_mode = true;
+        } else if (argv[i][1] == 'd') {
+          debug_mode = true;
+        }
       } else {
-	script_loaded = true;
-	int program_fd = open(argv[i], O_RDONLY);
-	if (program_fd != -1) {
-	  ssize_t len = read(program_fd, script, sizeof(script));
-	  script[len] = 0;
-	}
-	close(program_fd);
+        script_loaded = true;
+        int program_fd = open(argv[i], O_RDONLY);
+        if (program_fd != -1) {
+          ssize_t len = read(program_fd, script, sizeof(script));
+          script[len] = 0;
+        }
+        close(program_fd);
       }
     }
   }
@@ -1435,8 +1467,8 @@ main(int argc, char** argv) {
         break;
       } else if (pid == 0) {
         // Child. Return directly from main().
-	// If the parent gets killed, term.
-	prctl(PR_SET_PDEATHSIG, SIGKILL);
+        // If the parent gets killed, term.
+        prctl(PR_SET_PDEATHSIG, SIGKILL);
         return run_simulator();
       } else {
         // Parent. Block until the child exits.

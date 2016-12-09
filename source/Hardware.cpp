@@ -111,11 +111,11 @@ serial_putc(serial_t* obj, int c) {
       serial_buffer_echo = (serial_buffer_echo + 1) % sizeof(serial_buffer);
       // Skip unprintables below ' ' (but include nl/cr).
       if (b < ' ' && !(b == '\r' || b == '\n')) {
-	continue;
+        continue;
       }
       // This was a byte we sent, so don't echo it.
       if (b == c) {
-	return;
+        return;
       }
     }
   }
@@ -382,7 +382,8 @@ PwmOut::pulsewidth_us(int us) {
 
 extern "C" {
 // More mbed/nrf stuff used by microbit-micropython directly.
-void nrf_gpio_cfg_output(uint8_t pin_number) {
+void
+nrf_gpio_cfg_output(uint8_t pin_number) {
   get_gpio_pin(pin_number).set_output_mode();
 }
 
@@ -453,26 +454,30 @@ nrf_gpio_pins_clear(uint32_t pin_mask) {
 }
 
 extern "C" {
-NRF_FICR_t _NRF_FICR = { 4096 };
+NRF_FICR_t _NRF_FICR = {4096};
 NRF_RNG_t _NRF_RNG;
-NRF_NVMC_t _NRF_NVMC = { 0 };
+NRF_NVMC_t _NRF_NVMC = {0};
 
-void nrf_nvmc_write_byte(uint32_t addr, uint8_t b) {
+void
+nrf_nvmc_write_byte(uint32_t addr, uint8_t b) {
   *reinterpret_cast<uint8_t*>(addr) = b;
 }
-void nrf_nvmc_write_words(uint32_t addr, const uint32_t* d, size_t len) {
+void
+nrf_nvmc_write_words(uint32_t addr, const uint32_t* d, size_t len) {
   uint32_t* mem = reinterpret_cast<uint32_t*>(addr);
   for (size_t i = 0; i < len; ++i) {
     *mem++ = *d++;
   }
 }
-void nrf_nvmc_write_bytes(uint32_t addr, const uint8_t* d, size_t len) {
+void
+nrf_nvmc_write_bytes(uint32_t addr, const uint8_t* d, size_t len) {
   uint8_t* mem = reinterpret_cast<uint8_t*>(addr);
   for (size_t i = 0; i < len; ++i) {
     *mem++ = *d++;
   }
 }
-void nrf_nvmc_page_erase(uint32_t addr) {
+void
+nrf_nvmc_page_erase(uint32_t addr) {
   void* mem = reinterpret_cast<void*>(addr);
   memset(mem, 0xff, 4096);
 }
@@ -582,7 +587,14 @@ get_display_led(uint32_t n) {
 }
 
 GpioPin::GpioPin(uint32_t pin)
-  : _pin(pin), _output(false), _is_output(false), _pull(PullDefault), _analog(NAN), _is_pwm(false), _pwm_dutycycle(0), _pwm_period(1000) {
+    : _pin(pin),
+      _output(false),
+      _is_output(false),
+      _pull(PullDefault),
+      _analog(NAN),
+      _is_pwm(false),
+      _pwm_dutycycle(0),
+      _pwm_period(1000) {
 }
 
 void
@@ -672,10 +684,12 @@ GpioPin::get_voltage() {
     }
   }
 }
-double GpioPin::get_pwm() {
+double
+GpioPin::get_pwm() {
   return _pwm_dutycycle;
 }
-double GpioPin::get_pwm_period() {
+double
+GpioPin::get_pwm_period() {
   return _pwm_period;
 }
 GpioPinState
@@ -873,7 +887,8 @@ volatile uint8_t _radio_data_rate = RADIO_MODE_MODE_Nrf_1Mbit;
 }
 
 void
-simulator_radio_config(bool enabled, uint8_t channel, uint32_t base0, uint8_t prefix0, uint8_t data_rate) {
+simulator_radio_config(bool enabled, uint8_t channel, uint32_t base0, uint8_t prefix0,
+                       uint8_t data_rate) {
   _radio_enabled = enabled;
   _radio_channel = channel;
   _radio_base0 = base0;
@@ -883,7 +898,8 @@ simulator_radio_config(bool enabled, uint8_t channel, uint32_t base0, uint8_t pr
 }
 
 void
-simulator_radio_get_config(bool* enabled, uint8_t* channel, uint32_t* base0, uint8_t* prefix0, uint8_t* data_rate) {
+simulator_radio_get_config(bool* enabled, uint8_t* channel, uint32_t* base0, uint8_t* prefix0,
+                           uint8_t* data_rate) {
   *enabled = _radio_enabled;
   *channel = _radio_channel;
   *base0 = _radio_base0;
@@ -928,7 +944,8 @@ simulator_radio_get_tx(simulator_radio_frame_t* f) {
 
 void
 simulator_radio_add_rx(simulator_radio_frame_t f) {
-  if (f.channel == _radio_channel && f.base0 == _radio_base0 && f.prefix0 == _radio_prefix0 && f.data_rate == _radio_data_rate) {
+  if (f.channel == _radio_channel && f.base0 == _radio_base0 && f.prefix0 == _radio_prefix0 &&
+      f.data_rate == _radio_data_rate) {
     _radio_rx_frames.push(f);
   }
 }

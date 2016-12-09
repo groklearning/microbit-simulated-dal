@@ -1,9 +1,10 @@
 // microbit-micropython implements its own ticker support (in source/lib/ticker.cpp).
 // This is our simulated implementation of that interface (inc/lib/ticker.h).
-// We also implement a few extra methods (defined in Hardware.h) which allow the simulator (Main.cpp) to drive the timers.
+// We also implement a few extra methods (defined in Hardware.h) which allow the simulator
+// (Main.cpp) to drive the timers.
 
-#include "nrf.h"
 #include "Hardware.h"
+#include "nrf.h"
 
 #include "MicroBitFiber.h"
 
@@ -14,7 +15,8 @@
 // various state such as the buttons and the accelerometer 'interrupt' pins.
 // The slow callback is passed to ticker_init and implemented as microbit_ticker in main.cpp.
 // Timers 0,1,2 are accessible as the "fast" callbacks (set_ticker_callback) which take
-// an initial delay, then every time they are invoked they return the time (in us) until they should be next invoked.
+// an initial delay, then every time they are invoked they return the time (in us) until they should
+// be next invoked.
 
 typedef void (*callback_ptr)(void);
 typedef int32_t (*ticker_callback_ptr)(void);
@@ -121,10 +123,12 @@ fire_ticker(uint32_t ticks_since_last_call) {
   return next - _ticks;
 }
 
-uint32_t get_ticks() {
+uint32_t
+get_ticks() {
   return _ticks;
 }
 
-uint32_t get_macro_ticks() {
+uint32_t
+get_macro_ticks() {
   return _macro_ticks;
 }

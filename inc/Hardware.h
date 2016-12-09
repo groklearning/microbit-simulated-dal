@@ -11,8 +11,8 @@
 
 #include "MicroBitAccelerometer.h"
 
-const size_t FLASH_ROM_SIZE = 200*1024;
-const size_t MAX_SCRIPT_SIZE = 100*1024;
+const size_t FLASH_ROM_SIZE = 200 * 1024;
+const size_t MAX_SCRIPT_SIZE = 100 * 1024;
 
 extern uint8_t* flash_rom;
 
@@ -46,6 +46,7 @@ class GpioPin {
   uint32_t _pwm_period;
   uint32_t _on_ticks;
   uint32_t _duration_ticks;
+
  public:
   GpioPin(uint32_t pin);
   void set_input_mode(PinMode pull);
@@ -73,7 +74,7 @@ class GpioPin {
 GpioPin& get_gpio_pin(uint32_t pin);
 
 class DisplayLed {
-private:
+ private:
   uint32_t _n;
   bool _state;
   uint32_t _b;
@@ -81,7 +82,8 @@ private:
   uint32_t _duration_ticks;
   bool is_on();
   uint32_t ticks();
-public:
+
+ public:
   DisplayLed(uint32_t n);
   void update();
   void calculate();
@@ -106,9 +108,10 @@ bool has_exceeded_random_call_limit();
 void set_random_choice(int32_t count, const char* result);
 bool get_random_choice(int32_t* count, const char** result);
 
-
 struct simulator_radio_frame_t {
-simulator_radio_frame_t() : len(0), channel(7), base0(0x75626974), prefix0(0), data_rate(RADIO_MODE_MODE_Nrf_1Mbit) {}
+  simulator_radio_frame_t()
+      : len(0), channel(7), base0(0x75626974), prefix0(0), data_rate(RADIO_MODE_MODE_Nrf_1Mbit) {
+  }
   uint32_t len;
   char data[2048];
   uint8_t channel;
@@ -117,8 +120,10 @@ simulator_radio_frame_t() : len(0), channel(7), base0(0x75626974), prefix0(0), d
   uint8_t data_rate;
 };
 
-void simulator_radio_config(bool enabled, uint8_t channel, uint32_t base0, uint8_t prefix0, uint8_t data_rate);
-void simulator_radio_get_config(bool* enabled, uint8_t* channel, uint32_t* base0, uint8_t* prefix0, uint8_t* data_rate);
+void simulator_radio_config(bool enabled, uint8_t channel, uint32_t base0, uint8_t prefix0,
+                            uint8_t data_rate);
+void simulator_radio_get_config(bool* enabled, uint8_t* channel, uint32_t* base0, uint8_t* prefix0,
+                                uint8_t* data_rate);
 
 void simulator_radio_send(const uint8_t* buf, uint32_t len);
 bool simulator_radio_receive(uint8_t* buf, uint32_t* len);
