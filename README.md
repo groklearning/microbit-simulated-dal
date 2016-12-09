@@ -47,6 +47,8 @@ The associated fork of the micro:bit MicroPython repository has a [few small cha
 Pull requests welcome!
 
 ## Initial setup:
+First you'll need a build environment with yotta. If you can already build micro:bit MicroPython firmware images, then you're probably good to go! Otherwise follow the instructions at the main [microbit MicroPython repository](https://github.com/bbcmicrobit/micropython). At a minimum you just need yotta, ninja and cmake to build this simulator - you don't actually need the ARM toolchain.
+
 Clone the fork of bbcmicrobit/micropython and this repo.
 ```bash
 cd ~/repos  # Change to your working dir.
