@@ -41,7 +41,7 @@ The associated fork of the micro:bit MicroPython repository has a [few small cha
 Clone the fork of bbcmicrobit/micropython and this repo.
 ```bash
 cd ~/repos  # Change to your working dir.
-git clone -b master-groksimulator git@github.com:groklearning/micropython.git bbcmicrobit-micropython
+git clone -b master-groksimulator git@github.com:groklearning/micropython.git bbcmicrobit-micropython-simulator
 git clone -b master git@github.com:groklearning/microbit-simulated-dal.git
 ```
 
@@ -59,7 +59,7 @@ popd
 
 Build for x86
 ```bash
-cd bbcmicrobit-micropython
+cd bbcmicrobit-micropython-simulator
 yotta link microbit-simulated-dal  # Ignore warning
 yotta link-target x86-linux-native-32bit  # Ignore warning
 yotta target x86-linux-native-32bit
@@ -119,8 +119,10 @@ The idea is that this simulator runs with some sort of frontend that is managing
 
 In the meantime, there's a very rough curses-based command-line UI in `utils/gui.py`. Use Ctrl-O to switch between focusing the micro:bit or the serial console. It supports showing display updates, sending button events and the serial console.
 
+`gui.py` expects to find the `microbit-micropython` binary in `$PATH`.
+
 ```bash
-path/to/microbit-simulated-dal/utils/gui.py [-i [path/to/program.py]]
+env PATH=${PATH}:path/to/bbcmicrobit-micropython-simulator/build/x86-linux-native-32bit/source/ path/to/microbit-simulated-dal/utils/gui.py [-i [path/to/program.py]]
 ```
 
 ![screnshot of curses gui](docs/curses-gui.png)
