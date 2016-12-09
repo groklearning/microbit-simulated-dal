@@ -104,7 +104,7 @@ Type "help()" for more information.
 
 If you pass a program, it will run that program and terminate when the Python code finishes.
 ```bash
-$ (echo 'from microbit import *'; echo 'display.show(Image.HEART)') > /tmp/program.py
+$ echo -e 'from microbit import *\ndisplay.show(Image.HEART)' > /tmp/program.py
 $ ./build/x86-linux-native-32bit/source/microbit-micropython /tmp/program.py
 MicroPython v1.7-9-gbe020eb on 2016-09-14; micro:bit with nRF51822
 Type "help()" for more information.
