@@ -117,11 +117,13 @@ Ctrl-C and Ctrl-D behave like on the serial console with a real micro:bit.
 ### Command-line GUI
 The idea is that this simulator runs with some sort of frontend that is managing stdin/stdout/device_update/client_events. I plan to add a simple web server and HTML frontend that uses this.
 
-In the meantime, there's a very simple curses-based command-line UI in `utils/gui.py`. Use Ctrl-O to switch between focusing the micro:bit or the serial console.
+In the meantime, there's a very rough curses-based command-line UI in `utils/gui.py`. Use Ctrl-O to switch between focusing the micro:bit or the serial console. It supports showing display updates, sending button events and the serial console.
 
 ```bash
 path/to/microbit-simulated-dal/utils/gui.py [-i [path/to/program.py]]
 ```
+
+![screnshot of curses gui](docs/curses-gui.png)
 
 ## Input/output file format.
 Each line of both `___client_events` and `___device_updates` (or their corresponding pipes, see above) is a complete JSON blob. This blob should be a list of objects. Here's an example output of `___device_updates` for the micro:bit starting up and showing Image.HEART.
