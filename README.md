@@ -18,6 +18,8 @@ It supports the following hardware features:
  - Accelerometer
  - Temperature
 
+For more information, please contact [opensource@groklearning.com](opensource@groklearning.com).
+
 ## How it works
  
 The idea is that the MicroPython firmware runs almost unmodified, but compiled for x86 instead of ARM. Any calls made to the DAL or mbed APIs are instead implemented by this library and provide equivalent functionality.
@@ -27,7 +29,7 @@ Input and output to the simulator works in three ways:
  - Any device state changes/updates (e.g. LEDs, pins, radio, etc) are written to an output file (`___device_updates`) in the cwd.
  - Any input events (buttons, driving pins, accelerometer, compass, etc) are read from an input file (`___client_events`).
 
-Instead of using files for device updates or input, two environment variables can be set with the file descriptor of a pipe. GROK_UPDATES_PIPE and GROK_CLIENT_PIPE. Inside the Grok server, these pipes are hooked up to a web socket back to the browser.
+Instead of using files for device updates or input, two environment variables can be set with the file descriptor of a pipe. GROK_UPDATES_PIPE and GROK_CLIENT_PIPE. Inside the Grok server, these pipes are hooked up to a web socket back to the browser. For an example host application, see the command line gui below.
 
 There are a few places where the MicroPython firmware bypasses the DAL, so we also provide implementations of the underlying APIs provided by mbed (e.g. `nrf_gpio_pin_set()`).
 
@@ -37,11 +39,18 @@ The associated fork of the micro:bit MicroPython repository has a [few small cha
  - A small change to modrandom to support the marker.
  - Commenting out a few hardware accesses (e.g. direct register setting) that doesn't use higher-level APIs.
 
+## Todo list:
+ - Mac (& Windows) support. There's a few Linux-specific APIs used (epoll, termios). All fairly easy to work around.
+ - Build a web server / web sockets demo.
+ - Other modules (e.g. neopixels).
+ - Get it working on the upstream microbit-micropython repo (will require some changes to microbit-micropython).
+Pull requests welcome!
+
 ## Initial setup:
 Clone the fork of bbcmicrobit/micropython and this repo.
 ```bash
 cd ~/repos  # Change to your working dir.
-git clone -b master-groksimulator git@github.com:groklearning/micropython.git bbcmicrobit-micropython
+git clone -b master-groksimulator git@github.com:groklearning/micropython.git bbcmicrobit-micropython-simulator
 git clone -b master git@github.com:groklearning/microbit-simulated-dal.git
 ```
 
@@ -59,7 +68,7 @@ popd
 
 Build for x86
 ```bash
-cd bbcmicrobit-micropython
+cd bbcmicrobit-micropython-simulator
 yotta link microbit-simulated-dal  # Ignore warning
 yotta link-target x86-linux-native-32bit  # Ignore warning
 yotta target x86-linux-native-32bit
@@ -95,7 +104,7 @@ Type "help()" for more information.
 
 If you pass a program, it will run that program and terminate when the Python code finishes.
 ```bash
-$ (echo 'from microbit import *'; echo 'display.show(Image.HEART)') > /tmp/program.py
+$ echo -e 'from microbit import *\ndisplay.show(Image.HEART)' > /tmp/program.py
 $ ./build/x86-linux-native-32bit/source/microbit-micropython /tmp/program.py
 MicroPython v1.7-9-gbe020eb on 2016-09-14; micro:bit with nRF51822
 Type "help()" for more information.
@@ -117,11 +126,15 @@ Ctrl-C and Ctrl-D behave like on the serial console with a real micro:bit.
 ### Command-line GUI
 The idea is that this simulator runs with some sort of frontend that is managing stdin/stdout/device_update/client_events. I plan to add a simple web server and HTML frontend that uses this.
 
-In the meantime, there's a very simple curses-based command-line UI in `utils/gui.py`. Use Ctrl-O to switch between focusing the micro:bit or the serial console.
+In the meantime, there's a very rough curses-based command-line UI in `utils/gui.py`. Use Ctrl-O to switch between focusing the micro:bit or the serial console. It supports showing display updates, sending button events and the serial console.
+
+`gui.py` expects to find the `microbit-micropython` binary in `$PATH`.
 
 ```bash
-path/to/microbit-simulated-dal/utils/gui.py [-i [path/to/program.py]]
+env PATH=${PATH}:path/to/bbcmicrobit-micropython-simulator/build/x86-linux-native-32bit/source/ path/to/microbit-simulated-dal/utils/gui.py [-i [path/to/program.py]]
 ```
+
+![screnshot of curses gui](docs/curses-gui.png)
 
 ## Input/output file format.
 Each line of both `___client_events` and `___device_updates` (or their corresponding pipes, see above) is a complete JSON blob. This blob should be a list of objects. Here's an example output of `___device_updates` for the micro:bit starting up and showing Image.HEART.
