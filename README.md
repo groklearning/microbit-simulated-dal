@@ -37,6 +37,13 @@ The associated fork of the micro:bit MicroPython repository has a [few small cha
  - A small change to modrandom to support the marker.
  - Commenting out a few hardware accesses (e.g. direct register setting) that doesn't use higher-level APIs.
 
+## Todo list:
+ - Mac (& Windows) support. There's a few Linux-specific APIs used (epoll, termios). All fairly easy to work around.
+ - Build a web server / web sockets demo.
+ - Other modules (e.g. neopixels).
+ - Get it working on the upstream microbit-micropython repo (will require some changes to microbit-micropython).
+Pull requests welcome!
+
 ## Initial setup:
 Clone the fork of bbcmicrobit/micropython and this repo.
 ```bash
