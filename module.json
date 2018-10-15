@@ -11,8 +11,12 @@
   "dependencies": {
   },
   "extraIncludes": [
-    "inc",
-    "inc/mbed",
-    "inc/json"
+    "inc/core",
+    "inc/types",
+    "inc/drivers",
+    "inc/bluetooth",
+    "inc/platform",
+    "inc/grok/mbed",
+    "inc/grok/json"
   ]
 }
