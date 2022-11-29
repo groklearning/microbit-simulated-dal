@@ -29,7 +29,7 @@ SOFTWARE.
   */
 
 #include "MicroBit.h"
-
+#include <iostream>
 /**
   * Constructor.
   * Create a new Message Bus.
@@ -131,11 +131,15 @@ MicroBitMessageBus::queueEvent(MicroBitEvent& evt) {
   if (queueLength >= MESSAGE_BUS_LISTENER_MAX_QUEUE_DEPTH)
     return;
 
+  std::cout << "Before creating item";
+
   // Otherwise, we need to queue this event for later processing...
   // We queue this event at the tail of the queue at the point where we entered queueEvent()
   // This is important as the processing above *may* have generated further events, and
   // we want to maintain ordering of events.
   MicroBitEventQueueItem* item = new MicroBitEventQueueItem(evt);
+
+  std::cout << "After creating item";
 
   // The queue was empty when we entered this function, so queue our event at the start of the
   // queue.
