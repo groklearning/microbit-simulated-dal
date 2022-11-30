@@ -443,7 +443,7 @@ check_led_updates() {
   uint32_t leds[25] = {0};
   static uint32_t leds_prev[25] = {INT_MAX};
 
-  fprint(stderr, "Before suppress pin led\n");
+  fprintf(stderr, "Before suppress pin led\n");
 
   if (suppress_pin_led_updates) {
     return;
@@ -456,7 +456,7 @@ check_led_updates() {
   }
   pthread_mutex_unlock(&code_lock);
 
-  fprint(stderr, "Before memory compare\n");
+  fprintf(stderr, "Before memory compare\n");
 
   // If it's changed since the last update, send update.
   if (memcmp(leds, leds_prev, sizeof(leds)) != 0) {
