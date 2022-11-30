@@ -460,19 +460,22 @@ check_led_updates() {
 
   // If it's changed since the last update, send update.
   if (memcmp(leds, leds_prev, sizeof(leds)) != 0) {
+    fprintf(stderr, "In if condition\n");
     char json[1024];
     char* json_ptr = json;
     char* json_end = json + sizeof(json);
+    fprintf(stderr, "Append to json\n");
     appendf(&json_ptr, json_end, "[{ \"type\": \"microbit_leds\", \"ticks\": %d, \"data\": {",
             get_macro_ticks());
 
     list_to_json("b", &json_ptr, json_end, leds, sizeof(leds) / sizeof(uint32_t));
 
     appendf(&json_ptr, json_end, "}}]\n");
-
+    fprintf(stderr, "Before write to updates\n");
     write_to_updates(json, json_ptr - json, true);
-
+    fprintf(stderr, "After write to updates, before memcpy\n");
     memcpy(leds_prev, leds, sizeof(leds));
+    fprintf(stderr, "After Memcpy\n");
   }
 }
 
