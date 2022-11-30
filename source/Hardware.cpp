@@ -602,6 +602,7 @@ DisplayLed::is_on() {
 }
 uint32_t
 DisplayLed::brightness() {
+  fprintf(stderr, "Brightness: {%d}\n", _b);
   return _b;
 }
 

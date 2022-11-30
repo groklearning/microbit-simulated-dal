@@ -131,7 +131,7 @@ MicroBitMessageBus::queueEvent(MicroBitEvent& evt) {
   if (queueLength >= MESSAGE_BUS_LISTENER_MAX_QUEUE_DEPTH)
     return;
 
-  std::cout << "Before creating item";
+  fprintf(stderr, "Before creating item\n");
 
   // Otherwise, we need to queue this event for later processing...
   // We queue this event at the tail of the queue at the point where we entered queueEvent()
@@ -139,7 +139,7 @@ MicroBitMessageBus::queueEvent(MicroBitEvent& evt) {
   // we want to maintain ordering of events.
   MicroBitEventQueueItem* item = new MicroBitEventQueueItem(evt);
 
-  std::cout << "After creating item";
+  fprintf(stderr, "After creating item\n");
 
   // The queue was empty when we entered this function, so queue our event at the start of the
   // queue.
