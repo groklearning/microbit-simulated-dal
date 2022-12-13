@@ -467,9 +467,9 @@ check_led_updates() {
     fprintf(stderr, "Append to json\n");
     appendf(&json_ptr, json_end, "[{ \"type\": \"microbit_leds\", \"ticks\": %d, \"data\": {",
             get_macro_ticks());
-
+    fprintf(stderr, "List to json\n");
     list_to_json("b", &json_ptr, json_end, leds, sizeof(leds) / sizeof(uint32_t));
-
+    fprintf(stderr, "Append to json ptr\n");
     appendf(&json_ptr, json_end, "}}]\n");
     fprintf(stderr, "Before write to updates\n");
     write_to_updates(json, json_ptr - json, true);
