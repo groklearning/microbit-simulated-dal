@@ -182,10 +182,12 @@ serial_set_flow_control(serial_t* obj, FlowControl type, PinName rxflow, PinName
 uint8_t
 serial_tx_active(serial_t* obj) {
   fprintf(stderr, "Unsupported: serial_tx_active\n");
+  return 0;
 }
 uint8_t
 serial_rx_active(serial_t* obj) {
   fprintf(stderr, "Unsupported: serial_rx_active\n");
+  return 0;
 }
 
 // spi_api.h
@@ -344,18 +346,22 @@ I2C::frequency(int hz) {
 int
 I2C::read(int address, char* data, int length, bool repeated) {
   fprintf(stderr, "Unsupported: %s\n", __FUNCTION__);
+  return 0;
 }
 int
 I2C::read(int ack) {
   fprintf(stderr, "Unsupported: %s\n", __FUNCTION__);
+  return 0;
 }
 int
 I2C::write(int address, const char* data, int length, bool repeated) {
   fprintf(stderr, "Unsupported: %s\n", __FUNCTION__);
+  return 0;
 }
 int
 I2C::write(int data) {
   fprintf(stderr, "Unsupported: %s\n", __FUNCTION__);
+  return 0;
 }
 void
 I2C::start(void) {
@@ -702,6 +708,8 @@ GpioPin::get_voltage() {
           return 3.3;
         case PullDown:
           return 0.0;
+        default:
+          return 0.0;
       }
     } else {
       return _analog;
@@ -739,6 +747,8 @@ GpioPin::get_state() {
         return is_high() ? GPIO_PIN_INPUT_UP_HIGH : GPIO_PIN_INPUT_UP_LOW;
       case PullDown:
         return is_high() ? GPIO_PIN_INPUT_DOWN_HIGH : GPIO_PIN_INPUT_DOWN_LOW;
+      default:
+        return GPIO_PIN_INPUT_FLOATING;
     }
   }
 }

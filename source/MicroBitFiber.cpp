@@ -32,6 +32,7 @@ Fiber* currentFiber = &mainFiber;
 
 int invoke(void (*entry_fn)(void *), void *param) {
   fprintf(stderr, "Unhandled: invoke()\n");
+  return 0;
 }
 
 void schedule() {
@@ -40,4 +41,5 @@ void schedule() {
 
 int scheduler_runqueue_empty() {
   fprintf(stderr, "Unhandled: scheduler_runqueue_empty()\n");
+  return 0;
 }
