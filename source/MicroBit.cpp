@@ -458,9 +458,11 @@ MicroBit::panic(int statusCode) {
 
 ManagedString
 MicroBit::getName() {
+  return ManagedString();
 }
 ManagedString
 MicroBit::getSerial() {
+  return ManagedString();
 }
 
 MicroBit uBit;
@@ -606,6 +608,7 @@ MicroBitSerial::sendString(ManagedString s) {
 ManagedString
 MicroBitSerial::readString(int len) {
   fprintf(stderr, "Unsupported: %s\n", __FUNCTION__);
+  return ManagedString();
 }
 void
 MicroBitSerial::sendImage(MicroBitImage i) {
@@ -614,6 +617,7 @@ MicroBitSerial::sendImage(MicroBitImage i) {
 MicroBitImage
 MicroBitSerial::readImage(int width, int height) {
   fprintf(stderr, "Unsupported: %s\n", __FUNCTION__);
+  return MicroBitImage();
 }
 void
 MicroBitSerial::sendDisplayState() {
@@ -643,6 +647,7 @@ MicroBitStorage::flashWordWrite(uint32_t* address, uint32_t value) {
 MicroBitConfigurationBlock*
 MicroBitStorage::getConfigurationBlock() {
   fprintf(stderr, "Unsupported: %s\n", __FUNCTION__);
+  return 0;
 }
 int
 MicroBitStorage::setConfigurationBlock(MicroBitConfigurationBlock* block) {
@@ -675,6 +680,7 @@ MicroBitThermometer::idleTick() {
 int
 MicroBitThermometer::isIdleCallbackNeeded() {
   fprintf(stderr, "Unsupported: %s\n", __FUNCTION__);
+  return 0;
 }
 int
 MicroBitThermometer::isSampleNeeded() {

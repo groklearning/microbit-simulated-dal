@@ -48,6 +48,7 @@ DynamicPwm::redirect(PinName pin) {
 DynamicPwm*
 DynamicPwm::allocate(PinName pin, PwmPersistence persistence) {
   fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
+  return 0;
 }
 void
 DynamicPwm::release() {
@@ -61,6 +62,7 @@ DynamicPwm::write(float value) {
 PinName
 DynamicPwm::getPinName() {
   fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
+  return p0;
 }
 int
 DynamicPwm::getValue() {
@@ -95,9 +97,11 @@ ManagedString::~ManagedString() {
 }
 StringData*
 ManagedString::leakData() {
+  return NULL;
 }
 ManagedString
 ManagedString::substring(int16_t start, int16_t length) {
+  return ManagedString();
 }
 char
 ManagedString::charAt(int16_t index) {
@@ -114,6 +118,7 @@ ManagedString::initString(const char* str) {
 uint8_t*
 PacketBuffer::getBytes() {
   fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
+  return NULL;
 }
 void
 PacketBuffer::init(uint8_t* data, int length, int rssi) {
@@ -184,6 +189,7 @@ MicroBitImage::init_empty() {
 }
 ImageData*
 MicroBitImage::leakData() {
+  return NULL;
 }
 void
 MicroBitImage::clear() {
@@ -226,9 +232,11 @@ MicroBitImage::shiftDown(int16_t n) {
 }
 ManagedString
 MicroBitImage::toString() {
+  return ManagedString();
 }
 MicroBitImage
 MicroBitImage::crop(int startx, int starty, int finx, int finy) {
+  return MicroBitImage();
 }
 bool
 MicroBitImage::isReadOnly() {
@@ -236,6 +244,7 @@ MicroBitImage::isReadOnly() {
 }
 MicroBitImage
 MicroBitImage::clone() {
+  return MicroBitImage();
 }
 
 
