@@ -93,6 +93,7 @@ int
 clear_ticker_callback(uint32_t index) {
   _callbacks[index] = NULL;
   _timer_ticks[index] = 0;
+  return 0;
 }
 
 // Install a fast callback.
@@ -102,12 +103,14 @@ int
 set_ticker_callback(uint32_t index, ticker_callback_ptr func, int32_t initial_delay_us) {
   _callbacks[index] = func;
   _timer_ticks[index] = _ticks + (initial_delay_us / 16);
+  return 0;
 }
 
 int
 set_low_priority_callback(callback_ptr callback, int id) {
   fprintf(stderr, "Unhandled: %s\n", __FUNCTION__);
   _low_pri_callbacks[id] = callback;
+  return 0;
 }
 }
 

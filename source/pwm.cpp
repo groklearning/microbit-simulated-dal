@@ -49,5 +49,6 @@ pwm_get_period_us() {
 int
 pwm_set_duty_cycle(int32_t pin, int32_t value) {
   get_gpio_pin(pin).set_pwm(value);
+  return 0;
 }
 }
